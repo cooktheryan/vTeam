@@ -377,6 +377,7 @@ class SimpleClaudeRunner:
             permission_mode=os.getenv("CLAUDE_PERMISSION_MODE", "acceptEdits"),
             allowed_tools=allowed_tools if allowed_tools else None,
             cwd=str(self.workdir),
+            append_system_prompt=self.prompt,
         )
 
         # Restore cursor if present
@@ -398,7 +399,7 @@ class SimpleClaudeRunner:
                     logger.debug(f"async push workspace failed: {e}")
 
 
-            client.connect(prompt=self.prompt)
+            client.connect()
 
             while True:
                 inbox, new_offset = await self._read_inbox_lines(last_offset)

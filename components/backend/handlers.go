@@ -3023,6 +3023,34 @@ func createProjectRFEWorkflow(c *gin.Context) {
 		})
 	}
 
+	// Best-effort prefill of all agent markdown into workflow workspace for immediate UI availability
+	func() {
+		defer func() { _ = recover() }()
+		agentsBase := filepath.Join(workspaceRoot, ".claude", "agents")
+		_ = writeProjectContentFile(c, project, filepath.Join(agentsBase, ".keep"), []byte(""))
+		dir := resolveAgentsDir()
+		agents, err := readAllAgentYAMLs(dir)
+		if err != nil {
+			log.Printf("agent prefill: failed to read agents: %v", err)
+			return
+		}
+		for _, a := range agents {
+			persona := strings.TrimSpace(a.Persona)
+			if persona == "" {
+				continue
+			}
+			md, err := renderAgentMarkdownContent(persona)
+			if err != nil {
+				log.Printf("agent prefill: failed to render persona %s: %v", persona, err)
+				continue
+			}
+			path := fmt.Sprintf("%s/%s.md", agentsBase, persona)
+			if err := writeProjectContentFile(c, project, path, []byte(md)); err != nil {
+				log.Printf("agent prefill: write failed for %s: %v", path, err)
+			}
+		}
+	}()
+
 	c.JSON(http.StatusCreated, workflow)
 }
 

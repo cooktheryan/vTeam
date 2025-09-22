@@ -547,7 +547,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
         {/* Tabbed content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className={`grid ${hasWorkspace ? "grid-cols-4" : "grid-cols-3"} w-full`}>
+          <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="messages">Messages</TabsTrigger>
             {hasWorkspace ? <TabsTrigger value="workspace">Workspace</TabsTrigger> : null}

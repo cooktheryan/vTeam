@@ -75,7 +75,21 @@ const LoadingDots = () => (
         style={{ animationDelay: "0.2s" }}
       ></div>
     </div>
-    <span className="ml-2 text-xs text-gray-400">Thinking...</span>
+    <span className="ml-2 text-xs text-gray-400">{
+      (() => {
+        const messages = [
+          "Pretending to be productive",
+          "Downloading more RAM",
+          "Consulting the magic 8-ball",
+          "Teaching bugs to behave",
+          "Brewing digital coffee",
+          "Rolling for initiative",
+          "Surfing the data waves",
+          "Juggling bits and bytes",
+          "Tipping my fedora",
+        ];
+        return messages[Math.floor(Math.random() * messages.length)];
+      })()}</span>
   </div>
 );
 
