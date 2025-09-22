@@ -460,51 +460,109 @@ export default function ProjectRFEDetailPage() {
                             ) : (
                               <Badge variant="secondary">{prerequisitesMet ? "Missing" : "Blocked"}</Badge>
                             )}
-                            {!exists && sessionForPhase?.status?.phase !== "Running" && (
-                              <Button size="sm" onClick={async () => {
-                                try {
-                                  setStartingPhase(phase);
-                                  const isIdeate = phase === "ideate";
-                                  const isSpecify = phase === "specify";
-                                  const prompt = isIdeate
-                                    ? "/ideate Create an RFE. Produce rfe.md at the workspace root with background, problem statement, goals, non-goals, scope, stakeholders, dependencies, risks, success criteria. Use repos under /repos for context."
-                                    : (isSpecify
-                                      ? "/specify Develop a new feature on top of the projects in /repos based on rfe.md"
-                                      : `/${phase} ${workflow.description}`);
-                                  const payload: CreateAgenticSessionRequest = {
-                                    prompt,
-                                    displayName: `${workflow.title} - ${phase}`,
-                                    interactive: isIdeate,
-                                    workspacePath: workflowWorkspace,
-                                    environmentVariables: {
-                                      WORKFLOW_PHASE: phase,
-                                      PARENT_RFE: workflow.id,
-                                    },
-                                    labels: {
-                                      project,
-                                      "rfe-workflow": workflow.id,
-                                      "rfe-phase": phase,
-                                    },
-                                    annotations: {
-                                      "rfe-expected": expected,
-                                    },
-                                  };
-                                  const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(project)}/agentic-sessions`, {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify(payload),
-                                  });
-                                  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                                  await Promise.all([load(), loadSessions()]);
-                                  await probeWorkspaceAndPhase();
-                                } catch (e) {
-                                  setError(e instanceof Error ? e.message : "Failed to start session");
-                                } finally {
-                                  setStartingPhase(null);
-                                }
-                              }} disabled={startingPhase === phase || !prerequisitesMet}>
-                                {startingPhase === phase ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Starting…</>) : (<><Play className="mr-2 h-4 w-4" />Generate</>)}
-                              </Button>
+                            {!exists && (
+                              phase === "ideate"
+                                ? (
+                                  (sessionForPhase && (sessionForPhase.status?.phase === "Running" || sessionForPhase.status?.phase === "Creating"))
+                                    ? (
+                                      <Link href={{
+                                        pathname: `/projects/${encodeURIComponent(project)}/sessions/${encodeURIComponent(sessionForPhase.metadata.name)}`,
+                                        query: {
+                                          backHref: `/projects/${encodeURIComponent(project)}/rfe/${encodeURIComponent(id)}?tab=overview`,
+                                          backLabel: `Back to RFE`
+                                        }
+                                      } as any}>
+                                        <Button size="sm" variant="default">
+                                          Enter Chat
+                                        </Button>
+                                      </Link>
+                                    )
+                                    : (
+                                      <Button size="sm" onClick={async () => {
+                                        try {
+                                          setStartingPhase(phase);
+                                          const prompt = `IMPORTANT: The result of this interactive chat session MUST produce rfe.md at the workspace root. The rfe.md should be formatted as markdown in the following way:\n\n# Feature Title\n\n**Feature Overview:**  \n*An elevator pitch (value statement) that describes the Feature in a clear, concise way. ie: Executive Summary of the user goal or problem that is being solved, why does this matter to the user? The \"What & Why\"...* \n\n* Text\n\n**Goals:**\n\n*Provide high-level goal statement, providing user context and expected user outcome(s) for this Feature. Who benefits from this Feature, and how? What is the difference between today's current state and a world with this Feature?*\n\n* Text\n\n**Out of Scope:**\n\n*High-level list of items or personas that are out of scope.*\n\n* Text\n\n**Requirements:**\n\n*A list of specific needs, capabilities, or objectives that a Feature must deliver to satisfy the Feature. Some requirements will be flagged as MVP. If an MVP gets shifted, the Feature shifts. If a non MVP requirement slips, it does not shift the feature.*\n\n* Text\n\n**Done - Acceptance Criteria:**\n\n*Acceptance Criteria articulates and defines the value proposition - what is required to meet the goal and intent of this Feature. The Acceptance Criteria provides a detailed definition of scope and the expected outcomes - from a users point of view*\n\n* Text\n\n**Use Cases - i.e. User Experience & Workflow:**\n\n*Include use case diagrams, main success scenarios, alternative flow scenarios.*\n\n* Text\n\n**Documentation Considerations:**\n\n*Provide information that needs to be considered and planned so that documentation will meet customer needs. If the feature extends existing functionality, provide a link to its current documentation..*\n\n* Text\n\n**Questions to answer:**\n\n*Include a list of refinement / architectural questions that may need to be answered before coding can begin.*\n\n* Text\n\n**Background & Strategic Fit:**\n\n*Provide any additional context is needed to frame the feature.*\n\n* Text\n\n**Customer Considerations**\n\n*Provide any additional customer-specific considerations that must be made when designing and delivering the Feature.*\n\n* Text`;
+                                          const payload: CreateAgenticSessionRequest = {
+                                            prompt,
+                                            displayName: `${workflow.title} - ${phase}`,
+                                            interactive: true,
+                                            workspacePath: workflowWorkspace,
+                                            environmentVariables: {
+                                              WORKFLOW_PHASE: phase,
+                                              PARENT_RFE: workflow.id,
+                                            },
+                                            labels: {
+                                              project,
+                                              "rfe-workflow": workflow.id,
+                                              "rfe-phase": phase,
+                                            },
+                                            annotations: {
+                                              "rfe-expected": expected,
+                                            },
+                                          };
+                                          const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(project)}/agentic-sessions`, {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify(payload),
+                                          });
+                                          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                                          await Promise.all([load(), loadSessions()]);
+                                          await probeWorkspaceAndPhase();
+                                        } catch (e) {
+                                          setError(e instanceof Error ? e.message : "Failed to start session");
+                                        } finally {
+                                          setStartingPhase(null);
+                                        }
+                                      }} disabled={startingPhase === phase || !prerequisitesMet}>
+                                        {startingPhase === phase ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Starting…</>) : (<><Play className="mr-2 h-4 w-4" />Start Chat</>)}
+                                      </Button>
+                                    )
+                                )
+                                : (
+                                  sessionForPhase?.status?.phase !== "Running" && (
+                                    <Button size="sm" onClick={async () => {
+                                      try {
+                                        setStartingPhase(phase);
+                                        const isSpecify = phase === "specify";
+                                        const prompt = isSpecify
+                                          ? "/specify Develop a new feature on top of the projects in /repos based on rfe.md"
+                                          : `/${phase} ${workflow.description}`;
+                                        const payload: CreateAgenticSessionRequest = {
+                                          prompt,
+                                          displayName: `${workflow.title} - ${phase}`,
+                                          interactive: false,
+                                          workspacePath: workflowWorkspace,
+                                          environmentVariables: {
+                                            WORKFLOW_PHASE: phase,
+                                            PARENT_RFE: workflow.id,
+                                          },
+                                          labels: {
+                                            project,
+                                            "rfe-workflow": workflow.id,
+                                            "rfe-phase": phase,
+                                          },
+                                          annotations: {
+                                            "rfe-expected": expected,
+                                          },
+                                        };
+                                        const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(project)}/agentic-sessions`, {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify(payload),
+                                        });
+                                        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                                        await Promise.all([load(), loadSessions()]);
+                                        await probeWorkspaceAndPhase();
+                                      } catch (e) {
+                                        setError(e instanceof Error ? e.message : "Failed to start session");
+                                      } finally {
+                                        setStartingPhase(null);
+                                      }
+                                    }} disabled={startingPhase === phase || !prerequisitesMet}>
+                                      {startingPhase === phase ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Starting…</>) : (<><Play className="mr-2 h-4 w-4" />Generate</>)}
+                                    </Button>
+                                  )
+                                )
                             )}
                             {exists && (
                               <Button size="sm" variant="secondary" onClick={async () => {

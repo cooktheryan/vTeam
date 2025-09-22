@@ -41,11 +41,36 @@ const formatToolInput = (input?: string) => {
   }
 };
 
-const truncateContent = (content: string, maxLength = 2000) => {
-  if (content.length <= maxLength) return content;
+type ExpandableMarkdownProps = {
+  content: string;
+  maxLength?: number;
+  className?: string;
+};
+
+const ExpandableMarkdown: React.FC<ExpandableMarkdownProps> = ({
+  content,
+  maxLength = 2000,
+  className,
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const shouldTruncate = content.length > maxLength;
+  const display = expanded || !shouldTruncate ? content : content.substring(0, maxLength);
+
   return (
-    content.substring(0, maxLength) +
-    "\n\n... [Content truncated - expand to view full result]"
+    <div className={cn("prose prose-sm max-w-none", className)}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{display}</ReactMarkdown>
+      {shouldTruncate && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs px-2 py-1 rounded border bg-white hover:bg-gray-50 text-gray-700"
+          >
+            {expanded ? "Show less" : "Show more"}
+          </button>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -216,10 +241,8 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                 <div className="px-3 pb-3 space-y-3">
                   {subagentDescription && (
                     <div>
-                      <div className="text-sm text-gray-800">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {truncateContent(subagentDescription)}
-                        </ReactMarkdown>
+                      <div className="text-gray-800">
+                        <ExpandableMarkdown className="prose-sm" content={subagentDescription} />
                       </div>
                       {isLoading && (
                         <div className="flex items-center gap-2 text-xs text-gray-500 mt-2">
@@ -233,10 +256,8 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                   {isExpanded && subagentPrompt && (
                     <div>
                       <h4 className="text-xs font-medium text-gray-700 mb-1">Prompt</h4>
-                      <div className="bg-white rounded text-xs p-2 overflow-x-auto border">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {truncateContent(subagentPrompt)}
-                        </ReactMarkdown>
+                      <div className="bg-white rounded p-2 overflow-x-auto border">
+                        <ExpandableMarkdown className="prose-sm" content={subagentPrompt} />
                       </div>
                     </div>
                   )}
@@ -263,17 +284,18 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                         </h4>
                         <div
                           className={cn(
-                            "rounded p-2 text-xs overflow-x-auto text-gray-800",
+                            "rounded p-2 overflow-x-auto text-gray-800",
                             isError ? "bg-red-50 border border-red-200" : "bg-white border"
                           )}
                         >
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {truncateContent(
+                          <ExpandableMarkdown
+                            className="prose-sm"
+                            content={
                               typeof toolResultBlock?.content === "string"
-                                ? toolResultBlock.content
+                                ? (toolResultBlock?.content as string)
                                 : JSON.stringify(toolResultBlock?.content ?? "")
-                            )}
-                          </ReactMarkdown>
+                            }
+                          />
                         </div>
                       </div>
                     )}
@@ -308,10 +330,8 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                   </div>
                 </div>
                 <div className="px-3 pb-3">
-                  <div className={cn("rounded p-2 text-sm overflow-x-auto text-gray-800 bg-white border")}>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {truncateContent(extractTextFromResultContent(toolResultBlock?.content as unknown))}
-                    </ReactMarkdown>
+                  <div className={cn("rounded p-2 overflow-x-auto text-gray-800 bg-white border")}>
+                    <ExpandableMarkdown className="prose-sm" content={extractTextFromResultContent(toolResultBlock?.content as unknown)} />
                   </div>
                 </div>
               </div>

@@ -618,7 +618,12 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                           {session.status.jobName && (
                             <div>
                               <p className="font-semibold">K8s Job</p>
-                              <p className="text-muted-foreground font-mono text-xs">{session.status.jobName}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-muted-foreground font-mono text-xs">{session.status.jobName}</p>
+                                <Badge variant="outline" className={session.spec?.interactive ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-50 text-gray-700 border-gray-200"}>
+                                  {session.spec?.interactive ? "Interactive" : "Headless"}
+                                </Badge>
+                              </div>
                             </div>
                           )}
                         </div>

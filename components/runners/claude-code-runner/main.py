@@ -412,10 +412,11 @@ class SimpleClaudeRunner:
                             # Graceful end of interactive session
                             try:
                                 self._append_message("User requested session end")
-                                client.disconnect()
+                                self._update_status("Completed", message="Session ended by user", completed=True)
+                                await client.disconnect()
+                                return
                             except Exception:
                                 pass
-                            self._update_status("Completed", message="Session ended by user", completed=True)
                             return
                        
                         # Mirror user message into outbox
@@ -492,9 +493,7 @@ class SimpleClaudeRunner:
                         pass
 
                 await __import__("asyncio").sleep(float(os.getenv("INBOX_POLL_INTERVAL_SEC", "0.5")))
-        #final status update
-        self._update_status("Completed", message="Session completed", completed=True)
-        logger.info("Session completed successfully")
+       
 
     # ---------------- Status ----------------
     def _update_status(self, phase: str, message: str | None = None, completed: bool = False, result_msg: ResultMessage | None = None) -> None:
