@@ -491,6 +491,9 @@ class SimpleClaudeRunner:
                         pass
 
                 await __import__("asyncio").sleep(float(os.getenv("INBOX_POLL_INTERVAL_SEC", "0.5")))
+        #final status update
+        self._update_status("Completed", message="Session completed", completed=True)
+        logger.info("Session completed successfully")
 
     # ---------------- Status ----------------
     def _update_status(self, phase: str, message: str | None = None, completed: bool = False, result_msg: ResultMessage | None = None) -> None:
@@ -527,7 +530,6 @@ class SimpleClaudeRunner:
     def _run_llm_streaming(self, prompt: str) -> ResultMessage | None:
         """Run the LLM with streaming via Claude Code SDK, emitting structured messages for the UI."""
         # Nudge the agent to write files to artifacts folder
-        full_prompt = prompt + "\n\nIMPORTANT: Save any file outputs into the 'artifacts' folder of the working directory."
 
         result_message: ResultMessage | None = None
 
@@ -559,7 +561,7 @@ class SimpleClaudeRunner:
                 # include_partial_messages=True, # TODO add incremental messages
             )
 
-            stream = query(prompt=full_prompt, options=options)
+            stream = query(prompt=prompt, options=options)
             try:
                 async for message in stream:
                     logger.info(f"Message: {message}")

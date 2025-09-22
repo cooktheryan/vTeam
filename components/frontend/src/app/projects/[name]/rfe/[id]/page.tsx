@@ -34,9 +34,11 @@ export default function ProjectRFEDetailPage() {
   const [wsFileContent, setWsFileContent] = useState<string>("");
   const [wsLoading, setWsLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>("overview");
-
  
+  const [specBaseRelPath, setSpecBaseRelPath] = useState<string>("specs");
   const [publishingPhase, setPublishingPhase] = useState<WorkflowPhase | null>(null);
+
+  const [rfeDoc, setRfeDoc] = useState<{ exists: boolean; content: string }>({ exists: false, content: "" });
 
   const [specKitDir, setSpecKitDir] = useState<{
     spec: {
@@ -151,10 +153,15 @@ export default function ProjectRFEDetailPage() {
   }, [project, id]);
 
   const probeWorkspaceAndPhase = useCallback(async () => {
+    // Probe ideation doc at workspace root
+    const rfe = await fetchWsFile("rfe.md");
+    setRfeDoc(rfe);
+
     const features = await listWsPath("specs");
     const firstFeature = features && features.length > 0 ? features[0] : undefined;
 
     if (!firstFeature || !firstFeature.path) {
+      setSpecBaseRelPath("specs");
       setSpecKitDir({
         spec: { exists: false, content: "" },
         plan: { exists: false, content: "" },
@@ -163,6 +170,7 @@ export default function ProjectRFEDetailPage() {
       return;
     }
 
+    setSpecBaseRelPath(String(firstFeature.path));
     // Probe spec.md, plan.md, tasks.md by fetching files
     const [spec, plan, tasks] = await Promise.all([
       fetchWsFile(`${firstFeature.path}/spec.md`),
@@ -284,19 +292,20 @@ export default function ProjectRFEDetailPage() {
     </div>
   );
 
-  const currentPhase: WorkflowPhase = (!specKitDir.spec.exists && !specKitDir.plan.exists && !specKitDir.tasks.exists) ? "pre" : (!specKitDir.spec.exists ? "specify" : (!specKitDir.plan.exists ? "plan" : (!specKitDir.tasks.exists ? "tasks" : "completed")));
+  const currentPhase: WorkflowPhase = (!rfeDoc.exists) ? "pre" : (!specKitDir.spec.exists ? "specify" : (!specKitDir.plan.exists ? "plan" : (!specKitDir.tasks.exists ? "tasks" : "completed")));
   const workflowWorkspace = workflow.workspacePath || `/rfe-workflows/${id}/workspace`;
-  const phases: WorkflowPhase[] = ["pre", "specify", "plan", "tasks"];
+  const phases: WorkflowPhase[] = ["pre", "ideate", "specify", "plan", "tasks"];
   const idx = phases.indexOf(currentPhase);
   const totalCostUsd = (rfeSessions || []).reduce((sum, s) => sum + (typeof s.status?.total_cost_usd === "number" ? s.status.total_cost_usd : 0), 0);
-  const workflowSessions = (workflow.agentSessions || []);
+  const workflowSessions = (rfeSessions || []);
   const totalSessionsCount = workflowSessions.length;
-  const completedSessionsCount = workflowSessions.filter(s => (s.status || '').toLowerCase() === 'completed').length;
-  const runningSessionsCount = workflowSessions.filter(s => (s.status || '').toLowerCase() === 'running').length;
-  const failedSessionsCount = workflowSessions.filter(s => (s.status || '').toLowerCase() === 'failed').length;
+  const completedSessionsCount = workflowSessions.filter(s => (s.status?.phase || '').toLowerCase() === 'completed').length;
+  const runningSessionsCount = workflowSessions.filter(s => (s.status?.phase || '').toLowerCase() === 'running').length;
+  const failedSessionsCount = workflowSessions.filter(s => (s.status?.phase || '').toLowerCase() === 'failed').length;
 
   const phaseProgress = (phase: WorkflowPhase): number => {
     // If the expected document for the phase exists, treat as complete
+    if (phase === "ideate" && rfeDoc.exists) return 100;
     if (phase === "specify" && specKitDir.spec.exists) return 100;
     if (phase === "plan" && specKitDir.plan.exists) return 100;
     if (phase === "tasks" && specKitDir.tasks.exists) return 100;
@@ -318,7 +327,7 @@ export default function ProjectRFEDetailPage() {
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             <Link href={`/projects/${encodeURIComponent(project)}/rfe`}>
-              <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-2" />Back to RFE Workflows</Button>
+              <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-2" />Back to RFE Workspaces</Button>
             </Link>
             <div>
               <h1 className="text-3xl font-bold">{workflow.title}</h1>
@@ -402,18 +411,23 @@ export default function ProjectRFEDetailPage() {
               <CardContent>
                 <div className="space-y-4">
                   {(() => {
-                    const phaseList = ["specify","plan","tasks"] as WorkflowPhase[];
+                    const phaseList = ["ideate","specify","plan","tasks"] as WorkflowPhase[];
                     return phaseList.map(phase => {
                       const expected = (() => {
+                        if (phase === "ideate") return "rfe.md";
                         if (phase === "specify") return "spec.md";
                         if (phase === "plan") return "plan.md";
                         return "tasks.md";
                       })();
-                      const exists = phase === "specify" ? specKitDir.spec.exists : phase === "plan" ? specKitDir.plan.exists : specKitDir.tasks.exists;
-                      const linkedKey = Array.isArray((workflow as any).jiraLinks) ? ((workflow as any).jiraLinks as Array<{ path: string; jiraKey: string }>).find(l => l.path === expected)?.jiraKey : undefined;
+                      const exists = phase === "ideate" ? rfeDoc.exists : (phase === "specify" ? specKitDir.spec.exists : phase === "plan" ? specKitDir.plan.exists : specKitDir.tasks.exists);
+                      const relPath = phase === "ideate"
+                        ? expected
+                        : `${specBaseRelPath.replace(/^\/+/,'').replace(/\/+$/,'')}/${expected.replace(/^\/+/,'')}`;
+                      const fullPath = `${(workflowWorkspace || '').replace(/\/+$/,'')}/${relPath.replace(/^\/+/,'')}`;
+                      const linkedKey = Array.isArray((workflow as any).jiraLinks) ? ((workflow as any).jiraLinks as Array<{ path: string; jiraKey: string }>).find(l => l.path === fullPath)?.jiraKey : undefined;
                       const sessionForPhase = rfeSessions.find(s => (s.metadata.labels)?.["rfe-phase"] === phase);
                      
-                      const prerequisitesMet = phase === "specify" ? true : phase === "plan" ? specKitDir.spec.exists : (specKitDir.spec.exists && specKitDir.plan.exists);
+                      const prerequisitesMet = phase === "ideate" ? true : phase === "specify" ? rfeDoc.exists : phase === "plan" ? specKitDir.spec.exists : (specKitDir.spec.exists && specKitDir.plan.exists);
                       const sessionDisplay = ((sessionForPhase as any)?.spec?.displayName) || sessionForPhase?.metadata.name;
                       return (
                         <div key={phase} className={`p-4 rounded-lg border flex items-center justify-between ${exists ? "bg-green-50 border-green-200" : ""}`}>
@@ -450,10 +464,17 @@ export default function ProjectRFEDetailPage() {
                               <Button size="sm" onClick={async () => {
                                 try {
                                   setStartingPhase(phase);
+                                  const isIdeate = phase === "ideate";
+                                  const isSpecify = phase === "specify";
+                                  const prompt = isIdeate
+                                    ? "/ideate Create an RFE. Produce rfe.md at the workspace root with background, problem statement, goals, non-goals, scope, stakeholders, dependencies, risks, success criteria. Use repos under /repos for context."
+                                    : (isSpecify
+                                      ? "/specify Develop a new feature on top of the projects in /repos based on rfe.md"
+                                      : `/${phase} ${workflow.description}`);
                                   const payload: CreateAgenticSessionRequest = {
-                                    prompt: `/${phase} ${workflow.description}`,
+                                    prompt,
                                     displayName: `${workflow.title} - ${phase}`,
-                                    interactive: false,
+                                    interactive: isIdeate,
                                     workspacePath: workflowWorkspace,
                                     environmentVariables: {
                                       WORKFLOW_PHASE: phase,
@@ -492,7 +513,7 @@ export default function ProjectRFEDetailPage() {
                                   const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/rfe/${encodeURIComponent(id)}/jira`, {
                                     method: "POST",
                                     headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ path: expected }),
+                                    body: JSON.stringify({ path: fullPath }),
                                   });
                                   const data = await resp.json().catch(() => ({}));
                                   if (!resp.ok) throw new Error(data?.error || `HTTP ${resp.status}`);
@@ -513,7 +534,7 @@ export default function ProjectRFEDetailPage() {
                             {exists && linkedKey && (
                               <div className="flex items-center gap-2">
                                 <Badge variant="outline">{linkedKey}</Badge>
-                                <Button variant="link" size="sm" className="px-0 h-auto" onClick={() => openJiraForPath(expected)}>Open in Jira</Button>
+                                <Button variant="link" size="sm" className="px-0 h-auto" onClick={() => openJiraForPath(fullPath)}>Open in Jira</Button>
                               </div>
                             )}
                           </div>

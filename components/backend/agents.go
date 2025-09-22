@@ -17,6 +17,7 @@ type yamlAgent struct {
 	Role          string   `yaml:"role"`
 	Expertise     []string `yaml:"expertise"`
 	SystemMessage string   `yaml:"systemMessage"`
+	Tools         []string `yaml:"tools"`
 }
 
 type agentSummary struct {
@@ -127,6 +128,34 @@ func renderAgentMarkdownContent(persona string) (string, error) {
 		return "", fmt.Errorf("persona not found")
 	}
 	var sb strings.Builder
+
+	// --- YAML Front Matter ---
+	prettyPersona := titleCaseFromSnakeOrUpper(found.Persona)
+	displayName := found.Name
+	if strings.TrimSpace(displayName) == "" {
+		displayName = prettyPersona
+	}
+
+	// Derive description: prefer expertise list, then role, then first line of systemMessage
+	description := ""
+	if len(found.Expertise) > 0 {
+		description = fmt.Sprintf("%s Agent focused on %s.", displayName, strings.Join(found.Expertise, ", "))
+	} else if strings.TrimSpace(found.Role) != "" {
+		description = fmt.Sprintf("%s Agent focused on %s.", displayName, found.Role)
+	} else if strings.TrimSpace(found.SystemMessage) != "" {
+		firstLine := strings.SplitN(strings.TrimSpace(found.SystemMessage), "\n", 2)[0]
+		description = firstLine
+	} else {
+		description = fmt.Sprintf("%s Agent.", displayName)
+	}
+
+	fmt.Fprintf(&sb, "---\n")
+	fmt.Fprintf(&sb, "name: %s (%s)\n", displayName, prettyPersona)
+	fmt.Fprintf(&sb, "description: %s\n", description)
+	fmt.Fprintf(&sb, "tools: Read, Write, Edit, Bash, Glob, Grep, WebSearch\n")
+	fmt.Fprintf(&sb, "---\n\n")
+
+	// --- Existing Markdown Content ---
 	fmt.Fprintf(&sb, "# %s (%s)\n\n", found.Name, found.Persona)
 	if found.Role != "" {
 		fmt.Fprintf(&sb, "- Role: %s\n", found.Role)
@@ -141,4 +170,19 @@ func renderAgentMarkdownContent(persona string) (string, error) {
 		fmt.Fprintf(&sb, "\n## System message\n\n%s\n", found.SystemMessage)
 	}
 	return sb.String(), nil
+}
+
+// titleCaseFromSnakeOrUpper converts strings like "ENGINEERING_MANAGER" or "engineering manager"
+// into "Engineering Manager".
+func titleCaseFromSnakeOrUpper(s string) string {
+	s = strings.ReplaceAll(strings.ToLower(strings.TrimSpace(s)), "_", " ")
+	parts := strings.Fields(s)
+	for i := range parts {
+		p := parts[i]
+		if len(p) == 0 {
+			continue
+		}
+		parts[i] = strings.ToUpper(p[:1]) + p[1:]
+	}
+	return strings.Join(parts, " ")
 }

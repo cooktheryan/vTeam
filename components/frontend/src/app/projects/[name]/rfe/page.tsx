@@ -96,7 +96,7 @@ export default function ProjectRFEListPage() {
       <div className="container mx-auto p-6">
         <div className="flex items-center justify-center h-64">
           <RefreshCw className="animate-spin h-8 w-8" />
-          <span className="ml-2">Loading workflows...</span>
+          <span className="ml-2">Loading workspaces...</span>
         </div>
       </div>
     );
@@ -105,11 +105,11 @@ export default function ProjectRFEListPage() {
   return (
     <div className="space-y-4">
       <ProjectSubpageHeader
-        title={<>RFE Workflows</>}
+        title={<>RFE Workspaces</>}
         description={<>Feature refinement workflows scoped to this project</>}
         actions={
           <>
-            <Link href={`/projects/${encodeURIComponent(project)}/rfe/new`}><Button><Plus className="w-4 h-4 mr-2" />New Workflow</Button></Link>
+            <Link href={`/projects/${encodeURIComponent(project)}/rfe/new`}><Button><Plus className="w-4 h-4 mr-2" />New Workspace</Button></Link>
             <Button variant="outline" onClick={load} disabled={loading}>
               <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
               Refresh
@@ -126,13 +126,13 @@ export default function ProjectRFEListPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>RFE Workflows ({items?.length || 0})</CardTitle>
+          <CardTitle>RFE Workspaces ({items?.length || 0})</CardTitle>
           <CardDescription>Workflows scoped to this project</CardDescription>
         </CardHeader>
         <CardContent>
           {!items || items.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-muted-foreground mb-4">No RFE workflows yet</p>
+              <p className="text-muted-foreground mb-4">No RFE workspaces yet</p>
               <Link href={`/projects/${encodeURIComponent(project)}/rfe/new`}>
                 <Button>
                   <Plus className="w-4 h-4 mr-2" />

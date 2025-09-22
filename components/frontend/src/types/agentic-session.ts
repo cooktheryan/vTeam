@@ -161,7 +161,7 @@ export type CreateAgenticSessionRequest = {
 };
 
 // New types for RFE workflows
-export type WorkflowPhase = "pre" | "specify" | "plan" | "tasks" | "review" | "completed";
+export type WorkflowPhase = "pre" | "ideate" | "specify" | "plan" | "tasks" | "review" | "completed";
 
 export type AgentPersona = {
 	persona: string;

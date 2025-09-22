@@ -466,7 +466,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
+    <div className="container mx-auto p-6">
       <div className="flex items-center justify-start mb-6">
         <Link href={backHref || `/projects/${encodeURIComponent(projectName)}/sessions`}>
           <Button variant="ghost" size="sm">

@@ -128,7 +128,7 @@ export function AgentSelection({
         <div>
           <h3 className="text-lg font-semibold">Select Agents</h3>
           <p className="text-sm text-muted-foreground">
-            Choose agents to participate in this RFE workflow ({selectedAgents.length}/{maxAgents} selected)
+            Choose agents to participate in this RFE workspace ({selectedAgents.length}/{maxAgents} selected)
           </p>
         </div>
         <div className="flex gap-2">

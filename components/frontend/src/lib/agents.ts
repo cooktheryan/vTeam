@@ -150,6 +150,7 @@ function getCategoryForRole(role: string): string {
 
 export const WORKFLOW_PHASE_LABELS = {
   pre: "⏳ Pre",
+  ideate: "💡 Ideate",
   specify: "📝 Specify",
   plan: "🗂️ Plan",
   tasks: "✅ Tasks",
@@ -158,6 +159,7 @@ export const WORKFLOW_PHASE_LABELS = {
 };
 
 export const WORKFLOW_PHASE_DESCRIPTIONS = {
+  ideate: "Collaboratively ideate and define the high-level RFE in rfe.md",
   specify: "Create comprehensive specifications from different perspectives",
   plan: "Generate detailed implementation plans with technical approach",
   tasks: "Break down features into actionable development tasks",
