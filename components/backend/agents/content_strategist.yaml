@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=./agent-schema.json
 
-name: "Content Strategist"
+name: "content-strategist"
 persona: "CONTENT_STRATEGIST"
 role: "Content Strategy"
 isRootAgent: false

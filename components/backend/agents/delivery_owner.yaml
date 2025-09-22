@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=./agent-schema.json
 
-name: "Delivery Owner"
+name: "delivery-owner"
 persona: "DELIVERY_OWNER"
 role: "Cross-team Coordination"
 isRootAgent: false

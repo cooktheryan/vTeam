@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=./agent-schema.json
 
-name: "UX Team Lead"
+name: "ux-team-lead"
 persona: "UX_TEAM_LEAD"
 role: "UX Team Leadership"
 isRootAgent: false

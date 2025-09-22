@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=./agent-schema.json
 
-name: "Scrum Master"
+name: "scrum-master"
 persona: "SCRUM_MASTER"
 role: "Agile Facilitation"
 isRootAgent: false

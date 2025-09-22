@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=./agent-schema.json
 
-name: "UX Researcher"
+name: "ux-researcher"
 persona: "UX_RESEARCHER"
 role: "User Experience Research"
 isRootAgent: false

@@ -361,6 +361,38 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     return start ? Math.max(0, end - start) : undefined;
   }, [session?.status?.startTime, session?.status?.completionTime]);
 
+  // Subagent aggregation from tool_use messages
+  const subagentStats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const orderedTypes: string[] = [];
+    for (const message of messages) {
+      if (message.type === "assistant_message") {
+        const content = message.content;
+        if (content && typeof content === "object" && (content as any).type === "tool_use_block") {
+          const block = content as ToolUseBlock;
+          const input = block.input as unknown as Record<string, unknown> | undefined;
+          const subagentType = (input?.subagent_type as string) || undefined;
+          if (block.name === "Task" && typeof subagentType === "string" && subagentType.trim().length > 0) {
+            counts[subagentType] = (counts[subagentType] || 0) + 1;
+            if (!orderedTypes.includes(subagentType)) orderedTypes.push(subagentType);
+          }
+        }
+      } else if (message.type === "user_message") {
+        const content = message.content;
+        if (content && typeof content === "object" && (content as any).type === "tool_use_block") {
+          const block = content as ToolUseBlock;
+          const input = block.input as unknown as Record<string, unknown> | undefined;
+          const subagentType = (input?.subagent_type as string) || undefined;
+          if (block.name === "Task" && typeof subagentType === "string" && subagentType.trim().length > 0) {
+            counts[subagentType] = (counts[subagentType] || 0) + 1;
+            if (!orderedTypes.includes(subagentType)) orderedTypes.push(subagentType);
+          }
+        }
+      }
+    }
+    return { uniqueCount: orderedTypes.length, orderedTypes, counts };
+  }, [messages]);
+
   // Workspace helpers (loaded when Workspace tab opens)
   type ListItem = { name: string; path: string; isDir: boolean; size: number; modifiedAt: string };
   const listWsPath = useCallback(async (relPath?: string) => {
@@ -525,7 +557,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         </div>
 
         {/* Top compact stat cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <Card className="py-4">
             <CardContent>
               <div className="text-xs text-muted-foreground">Cost</div>
@@ -542,6 +574,15 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
             <CardContent >
               <div className="text-xs text-muted-foreground">Messages</div>
               <div className="text-lg font-semibold">{allMessages.length}</div>
+            </CardContent>
+          </Card>
+          <Card className="py-4">
+            <CardContent>
+              <div className="text-xs text-muted-foreground">Agents</div>
+              <div className="text-lg font-semibold">{subagentStats.uniqueCount > 0 ? subagentStats.uniqueCount : "-"}</div>
+              {subagentStats.orderedTypes.length > 0 ? (
+                <div className="text-xs text-muted-foreground mt-1 truncate" title={subagentStats.orderedTypes.join(", ")}>{subagentStats.orderedTypes.join(", ")}</div>
+              ) : null}
             </CardContent>
           </Card>
         </div>

@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=./agent-schema.json
 
-name: "Documentation Program Manager"
+name: "documentation-program-manager"
 persona: "DOCUMENTATION_PROGRAM_MANAGER"
 role: "Documentation Program Management"
 isRootAgent: false

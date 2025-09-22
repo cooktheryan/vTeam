@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=./agent-schema.json
 
-name: "Engineering Manager"
+name: "engineering-manager"
 persona: "ENGINEERING_MANAGER"
 role: "Engineering Management"
 isRootAgent: false

@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=./agent-schema.json
 
-name: "Product Experience Engineer"
+name: "product-experience-engineer"
 persona: "PXE"
 role: "Product Experience Engineering"
 isRootAgent: false

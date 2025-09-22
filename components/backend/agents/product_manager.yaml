@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=./agent-schema.json
 
-name: "Product Manager"
+name: "product-manager"
 persona: "PRODUCT_MANAGER"
 role: "Product Management and Business Strategy"
 isRootAgent: false

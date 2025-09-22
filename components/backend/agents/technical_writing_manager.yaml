@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=./agent-schema.json
 
-name: "Technical Writing Manager"
+name: "technical-writing-manager"
 persona: "TECHNICAL_WRITING_MANAGER"
 role: "Technical Writing Management"
 isRootAgent: false
