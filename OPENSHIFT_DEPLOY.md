@@ -1,99 +1,77 @@
-# vTeam OpenShift Deployment Guide
+# OpenShift Deployment Guide
 
-## What is vTeam?
-
-**vTeam** is a Kubernetes-native AI automation platform that combines Claude Code CLI with browser automation and spec-driven development capabilities.
-
-### Core Components
-- **Web UI**: React frontend for creating and monitoring AI sessions
-- **Backend API**: Go service managing sessions and Kubernetes resources
-- **Operator**: Kubernetes controller creating AI runner jobs
-- **Claude Runner**: Python service executing AI tasks with browser automation and SpekKit
-
-### Key Features
-- **Website Analysis**: AI-powered browser automation using Playwright MCP
-- **Spec-Driven Development**: Generate specifications, plans, and tasks with `/specify`, `/plan`, `/tasks` commands
-- **Git Integration**: Clone repositories, configure Git users, support SSH/token authentication
-- **Configurable Defaults**: Set organization-wide Git repositories and settings via ConfigMap
+vTeam is a Kubernetes-native AI automation platform that combines Claude Code CLI with browser automation capabilities.
 
 ## Prerequisites
 
 - OpenShift cluster with admin access
-- Container registry access (quay.io/ambient_code)
-- `kubectl` or `oc` CLI configured
+- Container registry access or use default images from quay.io/ambient_code
+- `oc` CLI configured
 
 ## Quick Deploy
 
-1. **Navigate to manifests directory**:
+1. **Deploy** (from project root):
    ```bash
-   cd components/manifests
+   make deploy
+   ```
+   This deploys to the `ambient-code` namespace using default images from quay.io/ambient_code.
+
+2. **Verify deployment**:
+   ```bash
+   oc get pods -n ambient-code
+   oc get services -n ambient-code
    ```
 
-2. **Run deployment script**:
+3. **Access the UI**:
    ```bash
-   ./deploy.sh
+   # Get the route URL
+   oc get route frontend-route -n ambient-code
+
+   # Or use port forwarding as fallback
+   kubectl port-forward svc/frontend-service 3000:3000 -n ambient-code
    ```
-
-3. **Access the UI**: Check for route creation or port-forward:
-   ```bash
-   oc get route frontend-route
-   # or
-   kubectl port-forward svc/frontend-service 3000:3000
-   ```
-
-## What Gets Deployed
-
-### Core Services
-- **Frontend** (`vteam_frontend:latest`) - React UI on port 3000
-- **Backend** (`vteam_backend:latest`) - Go API on port 8080
-- **Operator** (`vteam_operator:latest`) - Kubernetes controller
-- **Git ConfigMap** - Default Git configuration (optional)
-
-### Per-Session Resources
-- **Claude Runner Jobs** (`vteam_claude_runner:latest`) - AI execution pods
-- **AgenticSession CRDs** - Custom resources tracking AI sessions
-- **Persistent Storage** - Session state and artifacts
 
 ## Configuration
 
-### Git Integration (Optional)
-Edit `git-configmap.yaml` to set default repositories:
-```yaml
-git-repositories: |
-  https://github.com/your-org/project.git
-  https://github.com/your-org/docs.git
+### Customizing Namespace
+To deploy to a different namespace:
+```bash
+make deploy NAMESPACE=my-namespace
 ```
 
-### Environment Variables
-Key operator settings:
-- `IMAGE_PULL_POLICY=Always` (default) - Always pull latest images
-- `AMBIENT_CODE_RUNNER_IMAGE` - Claude runner image to use
+### Building Custom Images
+To build and use your own images:
+```bash
+# Set your container registry
+export REGISTRY="your-registry.com"  # e.g., "quay.io/your-username"
 
-## Usage
+# Login to your container registry
+docker login $REGISTRY
 
-1. **Open the web UI** at the frontend route/port
-2. **Create AI Session**:
-   - Enter prompt and target website URL
-   - Configure Git settings (optional)
-   - Submit to start AI analysis
+# Build and push all images
+make build-all REGISTRY=$REGISTRY
+make push-all REGISTRY=$REGISTRY
 
-3. **Use SpekKit Commands**:
-   - `/specify Build user authentication system` - Generate specifications
-   - `/plan Use Node.js and PostgreSQL` - Create implementation plans
-   - `/tasks Focus on backend API first` - Break down into tasks
+# Deploy with custom images
+make deploy CONTAINER_REGISTRY=$REGISTRY
+```
 
-4. **Monitor Progress**: View real-time updates and final results in the UI
+### Advanced Configuration
+Create and edit environment file for detailed customization:
+```bash
+cd components/manifests
+cp env.example .env
+# Edit .env to set CONTAINER_REGISTRY, IMAGE_TAG, Git settings, etc.
+```
 
-## Troubleshooting
+### Setting up API Keys
+After deployment, create runner secrets through the project settings in the web UI. The system requires an Anthropic API key to function.
 
-- **Check pod logs**: `kubectl logs -l app=backend-api`
-- **Verify operator**: `kubectl logs -l app=agentic-operator`
-- **Session status**: `kubectl get agenticsessions`
-- **Storage issues**: `kubectl get pvc vteam-state-storage`
+### OpenShift OAuth (Recommended)
+For cluster login and authentication, see [OpenShift OAuth Setup](docs/OPENSHIFT_OAUTH.md).
 
 ## Cleanup
 
 ```bash
-kubectl delete -f .
-kubectl delete crd agenticsessions.vteam.ambient-code
+make clean
 ```

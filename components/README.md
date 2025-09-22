@@ -83,39 +83,7 @@ components/
 
 ## ⚡ Quick Start
 
-### Prerequisites
-- Kubernetes cluster (local or cloud)
-- kubectl configured
-- Docker for building images
-- Anthropic API key
-
-### Deploy
-```bash
-# Clone the repository
-git clone <repository-url>
-cd components
-
-# Build all images
-docker build --platform=linux/amd64 -t backend:latest ./backend/
-docker build --platform=linux/amd64 -t frontend:latest ./frontend/
-docker build --platform=linux/amd64 -t operator:latest ./operator/
-docker build --platform=linux/amd64 -t claude-code-runner:latest ./runners/claude-code-runner/
-
-# Configure your Anthropic API key
-echo -n "your-api-key" | base64  # Use this in secrets.yaml
-
-# Deploy to Kubernetes (namespace: ambient-code)
-cd manifests
-./deploy.sh
-```
-
-### Access
-```bash
-# Port forward to access the UI (ambient-code namespace)
-kubectl port-forward svc/frontend-service 3000:3000 -n ambient-code
-
-# Open http://localhost:3000 in your browser
-```
+See [../OPENSHIFT_DEPLOY.md](../OPENSHIFT_DEPLOY.md) for complete deployment instructions.
 
 ## 🔧 Configuration
 
