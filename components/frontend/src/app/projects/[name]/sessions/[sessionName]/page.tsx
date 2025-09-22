@@ -138,6 +138,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   const [wsFileContent, setWsFileContent] = useState<string>("");
   const [wsLoading, setWsLoading] = useState<boolean>(false);
   const [usageExpanded, setUsageExpanded] = useState(false);
+  const [promptExpanded, setPromptExpanded] = useState(false);
 
   const [chatInput, setChatInput] = useState("")
 
@@ -562,11 +563,39 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                 <CardHeader>
                   <CardTitle className="flex items-center">
                     <Brain className="w-5 h-5 mr-2" />
-                    InitialPrompt
+                    Initial Prompt
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="whitespace-pre-wrap text-sm">{session.spec.prompt}</p>
+                  {(() => {
+                    const promptText = session.spec.prompt || "";
+                    const promptIsLong = promptText.length > 400;
+                    return (
+                      <>
+                        <div
+                          className={cn(
+                            "relative",
+                            !promptExpanded && promptIsLong ? "max-h-40 overflow-hidden" : ""
+                          )}
+                        >
+                          <p className="whitespace-pre-wrap text-sm">{promptText}</p>
+                          {!promptExpanded && promptIsLong ? (
+                            <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-white to-transparent pointer-events-none" />
+                          ) : null}
+                        </div>
+                        {promptIsLong && (
+                          <button
+                            className="mt-2 text-xs text-blue-600 hover:underline"
+                            onClick={() => setPromptExpanded((e) => !e)}
+                            aria-expanded={promptExpanded}
+                            aria-controls="initial-prompt"
+                          >
+                            {promptExpanded ? "View less" : "View more"}
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
                 </CardContent>
               </Card>
               {/* Latest Message */}

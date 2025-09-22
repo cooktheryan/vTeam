@@ -377,7 +377,7 @@ class SimpleClaudeRunner:
             permission_mode=os.getenv("CLAUDE_PERMISSION_MODE", "acceptEdits"),
             allowed_tools=allowed_tools if allowed_tools else None,
             cwd=str(self.workdir),
-            append_system_prompt=self.prompt,
+            append_system_prompt=self.prompt + "\n\nALWAYS consult sub agents to help with this task.",
         )
 
         # Restore cursor if present
@@ -412,7 +412,7 @@ class SimpleClaudeRunner:
                             # Graceful end of interactive session
                             try:
                                 self._append_message("User requested session end")
-                                self._update_status("Completed", message="Session ended by user", completed=True)
+                                await self.update_status_async("Completed", message="Session ended by user", completed=True)
                                 await client.disconnect()
                                 return
                             except Exception:
@@ -523,6 +523,28 @@ class SimpleClaudeRunner:
         except RuntimeError:
             # already in event loop
             pass
+        except Exception as e:
+            logger.warning(f"Failed to update status: {e}")
+
+
+    async def update_status_async(self, phase: str, message: str | None = None, completed: bool = False, result_msg: ResultMessage | None = None) -> None:
+        payload: Dict[str, Any] = {"phase": phase}
+        if message:
+            payload["message"] = message
+
+        if result_msg:
+            payload["result"] = result_msg.result
+            payload["subtype"] = result_msg.subtype
+            payload["is_error"] = result_msg.is_error
+            payload["num_turns"] = result_msg.num_turns
+            payload["session_id"] = result_msg.session_id
+            payload["total_cost_usd"] = result_msg.total_cost_usd
+            payload["usage"] = result_msg.usage
+
+        if completed:
+            payload["completionTime"] = datetime.now(timezone.utc).isoformat()
+        try:
+            await self.backend.update_session_status(self.session_name, payload)
         except Exception as e:
             logger.warning(f"Failed to update status: {e}")
 

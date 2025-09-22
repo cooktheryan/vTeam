@@ -11,6 +11,7 @@ import {
   Cog,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 export type ToolMessageProps = {
@@ -56,9 +57,41 @@ const ExpandableMarkdown: React.FC<ExpandableMarkdownProps> = ({
   const shouldTruncate = content.length > maxLength;
   const display = expanded || !shouldTruncate ? content : content.substring(0, maxLength);
 
+  // Match Message.tsx rendering so headers/code look correct
+  const markdownComponents: Components = {
+    code: ({
+      inline,
+      className,
+      children,
+      ...props
+    }: {
+      inline?: boolean;
+      className?: string;
+      children?: React.ReactNode;
+    } & React.HTMLAttributes<HTMLElement>) => {
+      return inline ? (
+        <code className="bg-gray-100 px-1 py-0.5 rounded text-xs" {...(props as React.HTMLAttributes<HTMLElement>)}>
+          {children}
+        </code>
+      ) : (
+        <pre className="bg-gray-800 text-gray-100 p-2 rounded text-xs overflow-x-auto">
+          <code className={className} {...(props as React.HTMLAttributes<HTMLElement>)}>
+            {children}
+          </code>
+        </pre>
+      );
+    },
+    p: ({ children }) => <p className="text-gray-600 leading-relaxed mb-2 text-sm">{children}</p>,
+    h1: ({ children }) => <h1 className="text-lg font-bold text-gray-800 mb-2">{children}</h1>,
+    h2: ({ children }) => <h2 className="text-md font-semibold text-gray-800 mb-2">{children}</h2>,
+    h3: ({ children }) => <h3 className="text-sm font-medium text-gray-800 mb-1">{children}</h3>,
+  };
+
   return (
-    <div className={cn("prose prose-sm max-w-none", className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{display}</ReactMarkdown>
+    <div className={cn("max-w-none", className)}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {display}
+      </ReactMarkdown>
       {shouldTruncate && (
         <div className="mt-2">
           <button

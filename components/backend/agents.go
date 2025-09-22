@@ -150,7 +150,7 @@ func renderAgentMarkdownContent(persona string) (string, error) {
 	}
 
 	fmt.Fprintf(&sb, "---\n")
-	fmt.Fprintf(&sb, "name: %s (%s)\n", displayName, prettyPersona)
+	fmt.Fprintf(&sb, "name: %s\n", displayName)
 	fmt.Fprintf(&sb, "description: %s\n", description)
 	fmt.Fprintf(&sb, "tools: Read, Write, Edit, Bash, Glob, Grep, WebSearch\n")
 	fmt.Fprintf(&sb, "---\n\n")

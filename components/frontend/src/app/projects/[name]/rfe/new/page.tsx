@@ -129,23 +129,6 @@ export default function ProjectNewRFEWorkflowPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Workspace</CardTitle>
-                <CardDescription>Optional shared directory path for workflow artifacts</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <FormField control={form.control} name="workspacePath" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Workspace Path</FormLabel>
-                    <FormControl><Input placeholder="e.g., /features/auth" {...field} /></FormControl>
-                    <FormDescription>Leave blank to use default path</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
                 <CardTitle className="flex items-center gap-2"><GitBranch className="h-5 w-5" />Repositories (optional)</CardTitle>
                 <CardDescription>Add one or more repos to clone into the workspace</CardDescription>
               </CardHeader>
