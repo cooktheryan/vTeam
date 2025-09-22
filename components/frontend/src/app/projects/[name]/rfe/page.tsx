@@ -19,6 +19,7 @@ const phaseLabel: Record<WorkflowPhase, string> = {
   tasks: "Tasks",
   review: "Review",
   completed: "Completed",
+  ideate: "Ideate",
 };
 
 function calcProgress(w: RFEWorkflow): number {
