@@ -12,7 +12,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AgenticSession, CreateAgenticSessionRequest, RFEWorkflow, WorkflowPhase } from "@/types/agentic-session";
 import { WORKFLOW_PHASE_LABELS } from "@/lib/agents";
-import { ArrowLeft, Play, Loader2, FolderTree, Plus } from "lucide-react";
+import { ArrowLeft, Play, Loader2, FolderTree, Plus, Trash2 } from "lucide-react";
 import { Upload, CheckCircle2 } from "lucide-react";
 import { FileTree, type FileTreeNode } from "@/components/file-tree";
 
@@ -37,9 +37,10 @@ export default function ProjectRFEDetailPage() {
  
   const [specBaseRelPath, setSpecBaseRelPath] = useState<string>("specs");
   const [publishingPhase, setPublishingPhase] = useState<WorkflowPhase | null>(null);
+  const [deleting, setDeleting] = useState<boolean>(false);
 
   const [rfeDoc, setRfeDoc] = useState<{ exists: boolean; content: string }>({ exists: false, content: "" });
-
+  const [firstFeaturePath, setFirstFeaturePath] = useState<string>("");
   const [specKitDir, setSpecKitDir] = useState<{
     spec: {
       exists: boolean;
@@ -162,6 +163,7 @@ export default function ProjectRFEDetailPage() {
 
     if (!firstFeature || !firstFeature.path) {
       setSpecBaseRelPath("specs");
+      setFirstFeaturePath("");
       setSpecKitDir({
         spec: { exists: false, content: "" },
         plan: { exists: false, content: "" },
@@ -171,6 +173,7 @@ export default function ProjectRFEDetailPage() {
     }
 
     setSpecBaseRelPath(String(firstFeature.path));
+    setFirstFeaturePath(firstFeature.path);
     // Probe spec.md, plan.md, tasks.md by fetching files
     const [spec, plan, tasks] = await Promise.all([
       fetchWsFile(`${firstFeature.path}/spec.md`),
@@ -277,6 +280,24 @@ export default function ProjectRFEDetailPage() {
     }
   }, [project, id]);
 
+  const deleteWorkflow = useCallback(async () => {
+    if (!confirm('Are you sure you want to delete this RFE workflow? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      setDeleting(true);
+      const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      // Navigate back to RFE list after successful deletion
+      window.location.href = `/projects/${encodeURIComponent(project)}/rfe`;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete workflow');
+    } finally {
+      setDeleting(false);
+    }
+  }, [project, id]);
 
   if (loading) return <div className="container mx-auto py-8">Loading…</div>;
   if (error || !workflow) return (
@@ -334,6 +355,18 @@ export default function ProjectRFEDetailPage() {
               <p className="text-muted-foreground mt-1">{workflow.description}</p>
             </div>
           </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={deleteWorkflow}
+            disabled={deleting}
+          >
+            {deleting ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Deleting…</>
+            ) : (
+              <><Trash2 className="mr-2 h-4 w-4" />Delete Workflow</>
+            )}
+          </Button>
         </div>
 
         <div className="grid gap-6 md:grid-cols-4">
@@ -411,23 +444,26 @@ export default function ProjectRFEDetailPage() {
               <CardContent>
                 <div className="space-y-4">
                   {(() => {
-                    const phaseList = ["ideate","specify","plan","tasks"] as WorkflowPhase[];
+                    const phaseList = ["ideate","specify","plan","tasks"] as const;
                     return phaseList.map(phase => {
                       const expected = (() => {
                         if (phase === "ideate") return "rfe.md";
-                        if (phase === "specify") return "spec.md";
-                        if (phase === "plan") return "plan.md";
-                        return "tasks.md";
+                        if (!firstFeaturePath) {
+                          // Fallback to just filename if no feature path found
+                          if (phase === "specify") return "spec.md";
+                          if (phase === "plan") return "plan.md";
+                          return "tasks.md";
+                        }
+                        // Use full path with subdirectory
+                        if (phase === "specify") return `${firstFeaturePath}/spec.md`;
+                        if (phase === "plan") return `${firstFeaturePath}/plan.md`;
+                        return `${firstFeaturePath}/tasks.md`;
                       })();
                       const exists = phase === "ideate" ? rfeDoc.exists : (phase === "specify" ? specKitDir.spec.exists : phase === "plan" ? specKitDir.plan.exists : specKitDir.tasks.exists);
-                      const relPath = phase === "ideate"
-                        ? expected
-                        : `${specBaseRelPath.replace(/^\/+/,'').replace(/\/+$/,'')}/${expected.replace(/^\/+/,'')}`;
-                      const fullPath = `${(workflowWorkspace || '').replace(/\/+$/,'')}/${relPath.replace(/^\/+/,'')}`;
-                      const linkedKey = Array.isArray((workflow as any).jiraLinks) ? ((workflow as any).jiraLinks as Array<{ path: string; jiraKey: string }>).find(l => l.path === fullPath)?.jiraKey : undefined;
+                      const linkedKey = Array.isArray((workflow as any).jiraLinks) ? ((workflow as any).jiraLinks as Array<{ path: string; jiraKey: string }>).find(l => l.path === expected)?.jiraKey : undefined;
                       const sessionForPhase = rfeSessions.find(s => (s.metadata.labels)?.["rfe-phase"] === phase);
                      
-                      const prerequisitesMet = phase === "ideate" ? true : phase === "specify" ? rfeDoc.exists : phase === "plan" ? specKitDir.spec.exists : (specKitDir.spec.exists && specKitDir.plan.exists);
+                      const prerequisitesMet = phase === "ideate" ? true : phase === "specify" ? true : phase === "plan" ? specKitDir.spec.exists : (specKitDir.spec.exists && specKitDir.plan.exists);
                       const sessionDisplay = ((sessionForPhase as any)?.spec?.displayName) || sessionForPhase?.metadata.name;
                       return (
                         <div key={phase} className={`p-4 rounded-lg border flex items-center justify-between ${exists ? "bg-green-50 border-green-200" : ""}`}>
@@ -519,13 +555,14 @@ export default function ProjectRFEDetailPage() {
                                     )
                                 )
                                 : (
-                                  sessionForPhase?.status?.phase !== "Running" && (
                                     <Button size="sm" onClick={async () => {
                                       try {
                                         setStartingPhase(phase);
                                         const isSpecify = phase === "specify";
                                         const prompt = isSpecify
-                                          ? "/specify Develop a new feature on top of the projects in /repos based on rfe.md"
+                                          ? (rfeDoc.exists
+                                              ? "/specify Develop a new feature on top of the projects in /repos based on rfe.md"
+                                              : `/specify Develop a new feature on top of the projects in /repos. Feature requirements: ${workflow.description}`)
                                           : `/${phase} ${workflow.description}`;
                                         const payload: CreateAgenticSessionRequest = {
                                           prompt,
@@ -561,17 +598,16 @@ export default function ProjectRFEDetailPage() {
                                     }} disabled={startingPhase === phase || !prerequisitesMet}>
                                       {startingPhase === phase ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Starting…</>) : (<><Play className="mr-2 h-4 w-4" />Generate</>)}
                                     </Button>
-                                  )
                                 )
                             )}
-                            {exists && (
+                            {exists && phase !== "ideate" && (
                               <Button size="sm" variant="secondary" onClick={async () => {
                                 try {
                                   setPublishingPhase(phase);
                                   const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/rfe/${encodeURIComponent(id)}/jira`, {
                                     method: "POST",
                                     headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ path: fullPath }),
+                                    body: JSON.stringify({ path: expected }),
                                   });
                                   const data = await resp.json().catch(() => ({}));
                                   if (!resp.ok) throw new Error(data?.error || `HTTP ${resp.status}`);
@@ -589,10 +625,10 @@ export default function ProjectRFEDetailPage() {
                                 )}
                               </Button>
                             )}
-                            {exists && linkedKey && (
+                            {exists && linkedKey && phase !== "ideate" && (
                               <div className="flex items-center gap-2">
                                 <Badge variant="outline">{linkedKey}</Badge>
-                                <Button variant="link" size="sm" className="px-0 h-auto" onClick={() => openJiraForPath(fullPath)}>Open in Jira</Button>
+                                <Button variant="link" size="sm" className="px-0 h-auto" onClick={() => openJiraForPath(expected)}>Open in Jira</Button>
                               </div>
                             )}
                           </div>

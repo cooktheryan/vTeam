@@ -408,7 +408,7 @@ class SimpleClaudeRunner:
                         logger.info(f"Inbox message: {msg}")
                         text = str(msg.get("content", ""))
                         norm = text.strip().lower()
-                        if norm in ("/end"):
+                        if "/end" in norm:
                             # Graceful end of interactive session
                             try:
                                 self._append_message("User requested session end")

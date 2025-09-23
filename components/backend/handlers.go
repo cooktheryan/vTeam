@@ -754,7 +754,7 @@ func provisionRunnerTokenForSession(c *gin.Context, reqK8s *kubernetes.Clientset
 			{
 				APIGroups: []string{"vteam.ambient-code"},
 				Resources: []string{"agenticsessions"},
-				Verbs:     []string{"get", "list", "watch"},
+				Verbs:     []string{"get", "list", "watch", "update", "patch"},
 			},
 			{
 				APIGroups: []string{"vteam.ambient-code"},
@@ -3327,6 +3327,19 @@ func deleteProjectRFEWorkflow(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Workflow deleted successfully"})
 }
 
+// extractTitleFromContent attempts to extract a title from markdown content
+// by looking for the first # heading
+func extractTitleFromContent(content string) string {
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "# ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "# "))
+		}
+	}
+	return ""
+}
+
 // POST /api/projects/:projectName/rfe-workflows/:id/jira { path }
 // Creates a Jira issue from a workspace file and updates the RFEWorkflow CR with the linkage
 func publishWorkflowFileToJira(c *gin.Context) {
@@ -3379,10 +3392,9 @@ func publishWorkflowFileToJira(c *gin.Context) {
 	}
 	jiraURL := strings.TrimSpace(get("JIRA_URL"))
 	jiraProject := strings.TrimSpace(get("JIRA_PROJECT"))
-	jiraEmail := strings.TrimSpace(get("JIRA_EMAIL"))
 	jiraToken := strings.TrimSpace(get("JIRA_API_TOKEN"))
-	if jiraURL == "" || jiraProject == "" || jiraEmail == "" || jiraToken == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing Jira configuration in runner secret"})
+	if jiraURL == "" || jiraProject == "" || jiraToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing Jira configuration in runner secret (JIRA_URL, JIRA_PROJECT, JIRA_API_TOKEN required)"})
 		return
 	}
 
@@ -3408,13 +3420,11 @@ func publishWorkflowFileToJira(c *gin.Context) {
 	}
 	content := string(b)
 
-	// Derive summary from file extension and workflow title
-	filename := filepath.Base(absPath)
-	phaseName := strings.TrimSuffix(filename, filepath.Ext(filename))
-	if phaseName == "spec" {
-		phaseName = "specify"
+	// Extract title from spec content or fallback to workflow title
+	title := extractTitleFromContent(content)
+	if title == "" {
+		title = wf.Title
 	}
-	summary := fmt.Sprintf("[RFE] %s - %s", wf.Title, phaseName)
 
 	// Create or update Jira issue (v2 API)
 	jiraBase := strings.TrimRight(jiraURL, "/")
@@ -3430,13 +3440,18 @@ func publishWorkflowFileToJira(c *gin.Context) {
 	if existingKey == "" {
 		// Create
 		jiraEndpoint := fmt.Sprintf("%s/rest/api/2/issue", jiraBase)
+		// Determine issue type based on file type
+		issueType := "Feature"
+		if strings.Contains(req.Path, "plan.md") {
+			issueType = "Feature"  // plan.md creates Features for now (was Epic)
+		}
+
 		reqBody := map[string]interface{}{
 			"fields": map[string]interface{}{
 				"project":     map[string]string{"key": jiraProject},
-				"summary":     summary,
+				"summary":     title,
 				"description": content,
-				"issuetype":   map[string]string{"name": "Task"},
-				"labels":      []string{"rfe", phaseName, id},
+				"issuetype":   map[string]string{"name": issueType},
 			},
 		}
 		payload, _ := json.Marshal(reqBody)
@@ -3446,7 +3461,7 @@ func publishWorkflowFileToJira(c *gin.Context) {
 		jiraEndpoint := fmt.Sprintf("%s/rest/api/2/issue/%s", jiraBase, url.PathEscape(existingKey))
 		reqBody := map[string]interface{}{
 			"fields": map[string]interface{}{
-				"summary":     summary,
+				"summary":     title,
 				"description": content,
 			},
 		}
@@ -3454,7 +3469,7 @@ func publishWorkflowFileToJira(c *gin.Context) {
 		httpReq, _ = http.NewRequest("PUT", jiraEndpoint, bytes.NewReader(payload))
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(jiraEmail+":"+jiraToken)))
+	httpReq.Header.Set("Authorization", "Bearer "+jiraToken)
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 	httpResp, httpErr := httpClient.Do(httpReq)
 	if httpErr != nil {
@@ -3686,16 +3701,15 @@ func getWorkflowJira(c *gin.Context) {
 		return ""
 	}
 	jiraURL := strings.TrimSpace(get("JIRA_URL"))
-	jiraEmail := strings.TrimSpace(get("JIRA_EMAIL"))
 	jiraToken := strings.TrimSpace(get("JIRA_API_TOKEN"))
-	if jiraURL == "" || jiraEmail == "" || jiraToken == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing Jira configuration in runner secret"})
+	if jiraURL == "" || jiraToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing Jira configuration in runner secret (JIRA_URL, JIRA_API_TOKEN required)"})
 		return
 	}
 	jiraBase := strings.TrimRight(jiraURL, "/")
 	endpoint := fmt.Sprintf("%s/rest/api/2/issue/%s", jiraBase, url.PathEscape(key))
 	httpReq, _ := http.NewRequest("GET", endpoint, nil)
-	httpReq.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(jiraEmail+":"+jiraToken)))
+	httpReq.Header.Set("Authorization", "Bearer "+jiraToken)
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 	httpResp, httpErr := httpClient.Do(httpReq)
 	if httpErr != nil {
