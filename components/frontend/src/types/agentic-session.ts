@@ -167,8 +167,7 @@ export type AgentPersona = {
 	persona: string;
 	name: string;
 	role: string;
-	expertise: string[];
-	description?: string;
+	description: string;
 };
 
 export type ArtifactFile = {

@@ -12,19 +12,16 @@ import (
 )
 
 type yamlAgent struct {
-	Name          string   `yaml:"name"`
-	Persona       string   `yaml:"persona"`
-	Role          string   `yaml:"role"`
-	Expertise     []string `yaml:"expertise"`
-	SystemMessage string   `yaml:"systemMessage"`
-	Tools         []string `yaml:"tools"`
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
+	Content     string `yaml:"content"`
 }
 
 type agentSummary struct {
-	Persona   string   `json:"persona"`
-	Name      string   `json:"name"`
-	Role      string   `json:"role"`
-	Expertise []string `json:"expertise"`
+	Persona     string `json:"persona"`
+	Name        string `json:"name"`
+	Role        string `json:"role"`
+	Description string `json:"description"`
 }
 
 func resolveAgentsDir() string {
@@ -62,7 +59,7 @@ func readAllAgentYAMLs(dir string) ([]yamlAgent, error) {
 		if err := yaml.Unmarshal(b, &a); err != nil {
 			continue
 		}
-		if a.Persona != "" {
+		if a.Name != "" {
 			out = append(out, a)
 		}
 	}
@@ -78,11 +75,16 @@ func listAgents(c *gin.Context) {
 	}
 	resp := make([]agentSummary, 0, len(agents))
 	for _, a := range agents {
+		// Extract persona from name (e.g., "Archie (Architect)" -> "archie-architect")
+		persona := extractPersonaFromName(a.Name)
+		// Extract role from name (e.g., "Archie (Architect)" -> "Architect")
+		role := extractRoleFromName(a.Name)
+
 		resp = append(resp, agentSummary{
-			Persona:   a.Persona,
-			Name:      a.Name,
-			Role:      a.Role,
-			Expertise: a.Expertise,
+			Persona:     persona,
+			Name:        a.Name,
+			Role:        role,
+			Description: a.Description,
 		})
 	}
 	c.JSON(http.StatusOK, resp)
@@ -119,7 +121,8 @@ func renderAgentMarkdownContent(persona string) (string, error) {
 	}
 	var found *yamlAgent
 	for i := range agents {
-		if strings.EqualFold(agents[i].Persona, persona) {
+		agentPersona := extractPersonaFromName(agents[i].Name)
+		if strings.EqualFold(agentPersona, persona) {
 			found = &agents[i]
 			break
 		}
@@ -130,46 +133,49 @@ func renderAgentMarkdownContent(persona string) (string, error) {
 	var sb strings.Builder
 
 	// --- YAML Front Matter ---
-	prettyPersona := titleCaseFromSnakeOrUpper(found.Persona)
 	displayName := found.Name
-	if strings.TrimSpace(displayName) == "" {
-		displayName = prettyPersona
-	}
+	description := found.Description
 
-	// Derive description: prefer expertise list, then role, then first line of systemMessage
-	description := ""
-	if len(found.Expertise) > 0 {
-		description = fmt.Sprintf("%s Agent focused on %s.", displayName, strings.Join(found.Expertise, ", "))
-	} else if strings.TrimSpace(found.Role) != "" {
-		description = fmt.Sprintf("%s Agent focused on %s.", displayName, found.Role)
-	} else if strings.TrimSpace(found.SystemMessage) != "" {
-		firstLine := strings.SplitN(strings.TrimSpace(found.SystemMessage), "\n", 2)[0]
-		description = firstLine
-	} else {
-		description = fmt.Sprintf("%s Agent.", displayName)
+	// Extract tools from description or use default
+	tools := "Read, Write, Edit, Bash, Glob, Grep"
+	if strings.Contains(strings.ToLower(description), "websearch") {
+		tools += ", WebSearch"
+	}
+	if strings.Contains(strings.ToLower(description), "webfetch") {
+		tools += ", WebFetch"
 	}
 
 	fmt.Fprintf(&sb, "---\n")
 	fmt.Fprintf(&sb, "name: %s\n", displayName)
 	fmt.Fprintf(&sb, "description: %s\n", description)
-	fmt.Fprintf(&sb, "tools: Read, Write, Edit, Bash, Glob, Grep, WebSearch\n")
+	fmt.Fprintf(&sb, "tools: %s\n", tools)
 	fmt.Fprintf(&sb, "---\n\n")
 
-	// --- Existing Markdown Content ---
-	fmt.Fprintf(&sb, "# %s (%s)\n\n", found.Name, found.Persona)
-	if found.Role != "" {
-		fmt.Fprintf(&sb, "- Role: %s\n", found.Role)
-	}
-	if len(found.Expertise) > 0 {
-		fmt.Fprintf(&sb, "- Expertise:\n")
-		for _, e := range found.Expertise {
-			fmt.Fprintf(&sb, "  - %s\n", e)
-		}
-	}
-	if found.SystemMessage != "" {
-		fmt.Fprintf(&sb, "\n## System message\n\n%s\n", found.SystemMessage)
-	}
+	// --- Agent Content ---
+	fmt.Fprintf(&sb, "%s\n", found.Content)
 	return sb.String(), nil
+}
+
+// extractPersonaFromName extracts persona from name format like "Archie Architect" -> "archie-architect"
+func extractPersonaFromName(name string) string {
+	// Extract first name and role from format like "Archie Architect"
+	parts := strings.Fields(name)
+	if len(parts) >= 2 {
+		firstName := strings.ToLower(parts[0])
+		role := strings.ToLower(strings.Join(parts[1:], "_"))
+		return firstName + "-" + role
+	}
+	// Fallback: just convert name to lowercase with dashes
+	return strings.ToLower(strings.ReplaceAll(name, " ", "-"))
+}
+
+// extractRoleFromName extracts role from name format like "Archie Architect" -> "Architect"
+func extractRoleFromName(name string) string {
+	parts := strings.Fields(name)
+	if len(parts) >= 2 {
+		return strings.Join(parts[1:], " ")
+	}
+	return ""
 }
 
 // titleCaseFromSnakeOrUpper converts strings like "ENGINEERING_MANAGER" or "engineering manager"

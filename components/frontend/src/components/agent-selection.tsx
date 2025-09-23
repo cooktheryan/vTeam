@@ -295,13 +295,6 @@ function AgentCard({ agent, selected, onToggle, disabled }: AgentCardProps) {
         <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
           {agent.description}
         </p>
-        <div className="flex flex-wrap gap-1">
-          {agent.expertise.slice(0, 2).map(skill => (
-            <Badge key={skill} variant="outline" className="text-xs px-1 py-0">
-              {skill.replace(/-/g, ' ')}
-            </Badge>
-          ))}
-        </div>
       </CardContent>
     </Card>
   );

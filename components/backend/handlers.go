@@ -3035,7 +3035,7 @@ func createProjectRFEWorkflow(c *gin.Context) {
 			return
 		}
 		for _, a := range agents {
-			persona := strings.TrimSpace(a.Persona)
+			persona := extractPersonaFromName(a.Name)
 			if persona == "" {
 				continue
 			}
@@ -3113,9 +3113,7 @@ func initSpecKitInWorkspace(c *gin.Context, project, workspaceRoot string) error
 		// Normalize path: keep leading dots intact; only trim explicit "./" prefix
 		rel := f.Name
 		origRel := rel
-		if strings.HasPrefix(rel, "./") {
-			rel = strings.TrimPrefix(rel, "./")
-		}
+		rel = strings.TrimPrefix(rel, "./")
 		// Ensure we do not write outside workspace
 		rel = strings.ReplaceAll(rel, "\\", "/")
 		for strings.Contains(rel, "../") {
