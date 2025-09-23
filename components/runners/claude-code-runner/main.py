@@ -370,7 +370,7 @@ class SimpleClaudeRunner:
             ResultMessage,
         )
 
-        allowed_tools_env = os.getenv("CLAUDE_ALLOWED_TOOLS", "Read,Write,Bash,Glob,Grep,Edit,MultiEdit,WebSearch,WebFetch").strip()
+        allowed_tools_env = "Read,Write,Bash,Glob,Grep,Edit,MultiEdit,WebSearch,WebFetch"
         allowed_tools = [t.strip() for t in allowed_tools_env.split(",") if t.strip()]
 
         options = ClaudeCodeOptions(
@@ -573,7 +573,7 @@ class SimpleClaudeRunner:
             nonlocal result_message
 
             # Allow configuring tools via env; default to common ones
-            allowed_tools_env = os.getenv("CLAUDE_ALLOWED_TOOLS", "Read,Write,Bash,WebSearch").strip()
+            allowed_tools_env = "Read,Write,Bash,Glob,Grep,Edit,MultiEdit,WebSearch,WebFetch"
             allowed_tools = [t.strip() for t in allowed_tools_env.split(",") if t.strip()]
 
             options = ClaudeCodeOptions(
