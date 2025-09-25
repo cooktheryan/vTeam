@@ -95,6 +95,7 @@ jobs:
         run: |
           oc login ${{ secrets.OPENSHIFT_SERVER }} --token=${{ secrets.OPENSHIFT_TOKEN }} --insecure-skip-tls-verify
 
-      - name: Deploy updated components to OpenShift
+      - name: Deploy updated components to OpenShift and force reload the pods
         run: |
           oc apply -k components/manifests
+          oc delete po --all -n ambient-code
