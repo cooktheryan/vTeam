@@ -97,4 +97,4 @@ jobs:
 
       - name: Deploy updated components to OpenShift
         run: |
-          oc delete po --all -n ambient-code
+          oc apply -k components/manifests
