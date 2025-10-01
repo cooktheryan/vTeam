@@ -310,6 +310,9 @@ build_and_deploy() {
   log "Deploying frontend..."
   oc apply -f "${MANIFESTS_DIR}/frontend-deployment.yaml" -n "$PROJECT_NAME"
   
+  log "Creating backend service alias for operator..."
+  oc apply -f "${MANIFESTS_DIR}/backend-service-alias.yaml" -n "$PROJECT_NAME"
+  
   log "Deploying operator..."
   oc apply -f "${MANIFESTS_DIR}/operator-deployment.yaml" -n "$PROJECT_NAME"
 }

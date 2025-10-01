@@ -26,6 +26,8 @@ spec:
               fieldPath: metadata.namespace
         - name: BACKEND_NAMESPACE
           value: "vteam-dev"
+        - name: BACKEND_API_URL
+          value: "http://vteam-backend:8080/api"
         - name: AMBIENT_CODE_RUNNER_IMAGE
           # For local dev, point to local registry or use external image
           value: "quay.io/ambient_code/vteam_claude_runner:latest"
