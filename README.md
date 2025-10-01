@@ -36,10 +36,12 @@ The platform consists of containerized microservices orchestrated via Kubernetes
 ## Prerequisites
 
 ### Required Tools
-- **OpenShift cluster** with admin access
-- **oc CLI** configured to access your cluster
-- **Container registry access** (or use default quay.io/ambient_code images)
-- **Docker/Podman** (only if building custom images)
+- **OpenShift Local (CRC)** for local development or OpenShift cluster for production
+- **oc** (OpenShift CLI) or **kubectl** v1.28+ configured to access your cluster  
+- **Docker or Podman** for building container images
+- **Container registry access** (Docker Hub, Quay.io, ECR, etc.) for production
+- **Go 1.24+** for building backend services (if building from source)
+- **Node.js 20+** and **npm** for the frontend (if building from source)
 
 ### Required API Keys
 - **Anthropic API Key** - Get from [Anthropic Console](https://console.anthropic.com/)
@@ -203,7 +205,87 @@ oc get all -l app=ambient-code -n ambient-code
 oc get events --sort-by='.lastTimestamp' -n ambient-code
 
 # Test frontend access
-curl -f "$(oc get route frontend-route -n ambient-code -o jsonpath='{.spec.host}')"
+curl -f http://localhost:3000 || echo "Frontend not accessible"
+
+# Test backend API
+kubectl port-forward svc/backend-service 8080:8080 -n ambient-code &
+curl http://localhost:8080/health
+```
+
+## Production Considerations
+
+### Security
+- **API Key Management**: Store Anthropic API keys securely in Kubernetes secrets
+- **RBAC**: Configure appropriate role-based access controls
+- **Network Policies**: Implement network isolation between components
+- **Image Scanning**: Scan container images for vulnerabilities before deployment
+
+### Monitoring
+- **Prometheus Metrics**: Configure metrics collection for all components
+- **Log Aggregation**: Set up centralized logging (ELK, Loki, etc.)
+- **Alerting**: Configure alerts for pod failures, resource exhaustion
+- **Health Checks**: Implement comprehensive health endpoints
+
+### Scaling
+- **Horizontal Pod Autoscaling**: Configure HPA based on CPU/memory usage
+- **Resource Limits**: Set appropriate resource requests and limits
+- **Node Affinity**: Configure pod placement for optimal resource usage
+
+## Development
+
+### Local Development with OpenShift Local (CRC)
+
+**Single Command Setup:**
+```bash
+# Start complete local development environment
+make dev-start
+```
+
+**What this provides:**
+- ✅ Full OpenShift cluster with CRC
+- ✅ Real OpenShift authentication and RBAC  
+- ✅ Production-like environment
+- ✅ Automatic image builds and deployments
+- ✅ Working frontend-backend integration
+
+**Prerequisites:**
+```bash
+# Install CRC (macOS)
+brew install crc
+
+# Get Red Hat pull secret (free):
+# 1. Visit: https://console.redhat.com/openshift/create/local
+# 2. Download pull secret to ~/.crc/pull-secret.json
+# 3. Run: crc setup
+
+# Then start development
+make dev-start
+```
+
+**Hot Reloading (optional):**
+```bash
+# Terminal 1: Start with development images
+DEV_MODE=true make dev-start
+
+# Terminal 2: Enable file sync for hot-reloading
+make dev-sync
+```
+
+**Access URLs:**
+- Frontend: `https://vteam-frontend-vteam-dev.apps-crc.testing`
+- Backend: `https://vteam-backend-vteam-dev.apps-crc.testing/health`
+- Console: `https://console-openshift-console.apps-crc.testing`
+
+### Building from Source
+```bash
+# Build all images locally
+make build-all
+
+# Build specific components
+make build-frontend
+make build-backend
+make build-operator
+make build-runner
 ```
 
 ## File Structure

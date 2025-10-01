@@ -1,4 +1,4 @@
-.PHONY: help setup-env build-all build-frontend build-backend build-operator build-runner deploy clean dev-frontend dev-backend lint test registry-login push-all
+.PHONY: help setup-env build-all build-frontend build-backend build-operator build-runner deploy clean dev-frontend dev-backend lint test registry-login push-all dev-start dev-stop dev-test dev-logs-operator dev-restart-operator dev-operator-status dev-test-operator
 
 # Default target
 help: ## Show this help message
@@ -82,3 +82,67 @@ push-all: ## Push all images to registry
 	$(CONTAINER_ENGINE) push $(REGISTRY)/$(BACKEND_IMAGE)
 	$(CONTAINER_ENGINE) push $(REGISTRY)/$(OPERATOR_IMAGE)
 	$(CONTAINER_ENGINE) push $(REGISTRY)/$(RUNNER_IMAGE)
+
+# Local dev helpers (OpenShift Local/CRC-based)
+dev-start: ## Start local dev (CRC + OpenShift + backend + frontend)
+	@bash components/scripts/local-dev/crc-start.sh
+
+dev-stop: ## Stop local dev processes
+	@bash components/scripts/local-dev/crc-stop.sh
+
+dev-test: ## Run local dev smoke tests
+	@bash components/scripts/local-dev/crc-test.sh
+
+# Additional CRC options
+dev-stop-cluster: ## Stop local dev and shutdown CRC cluster
+	@bash components/scripts/local-dev/crc-stop.sh --stop-cluster
+
+dev-clean: ## Stop local dev and delete OpenShift project  
+	@bash components/scripts/local-dev/crc-stop.sh --delete-project
+
+# Development mode with hot-reloading
+dev-start-hot: ## Start local dev with hot-reloading enabled
+	@DEV_MODE=true bash components/scripts/local-dev/crc-start.sh
+
+dev-sync: ## Start file sync for hot-reloading (run in separate terminal)
+	@bash components/scripts/local-dev/crc-dev-sync.sh both
+
+dev-sync-backend: ## Sync only backend files
+	@bash components/scripts/local-dev/crc-dev-sync.sh backend
+
+dev-sync-frontend: ## Sync only frontend files
+	@bash components/scripts/local-dev/crc-dev-sync.sh frontend
+
+dev-logs: ## Show logs for both backend and frontend
+	@echo "Backend logs:"
+	@oc logs -f deployment/vteam-backend -n vteam-dev --tail=20 &
+	@echo -e "\n\nFrontend logs:"
+	@oc logs -f deployment/vteam-frontend -n vteam-dev --tail=20
+
+dev-logs-backend: ## Show backend logs with Air output
+	@oc logs -f deployment/vteam-backend -n vteam-dev
+
+dev-logs-frontend: ## Show frontend logs with Next.js output
+	@oc logs -f deployment/vteam-frontend -n vteam-dev
+
+dev-logs-operator: ## Show operator logs
+	@oc logs -f deployment/vteam-operator -n vteam-dev
+
+dev-restart-operator: ## Restart operator deployment
+	@echo "Restarting operator..."
+	@oc rollout restart deployment/vteam-operator -n vteam-dev
+	@oc rollout status deployment/vteam-operator -n vteam-dev --timeout=60s
+
+dev-operator-status: ## Show operator status and recent events
+	@echo "Operator Deployment Status:"
+	@oc get deployment vteam-operator -n vteam-dev
+	@echo ""
+	@echo "Operator Pod Status:"
+	@oc get pods -n vteam-dev -l app=vteam-operator
+	@echo ""
+	@echo "Recent Operator Events:"
+	@oc get events -n vteam-dev --field-selector involvedObject.kind=Deployment,involvedObject.name=vteam-operator --sort-by='.lastTimestamp' | tail -10
+
+dev-test-operator: ## Run only operator tests
+	@echo "Running operator-specific tests..."
+	@bash components/scripts/local-dev/crc-test.sh 2>&1 | grep -A 1 "Operator"
