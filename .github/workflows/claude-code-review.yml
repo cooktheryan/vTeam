@@ -1,9 +1,9 @@
-# DISABLED: Claude Code Review fails on PRs from forks
+# Note: May still fail on PRs from forks
 # Issue: https://github.com/anthropics/claude-code-action/issues/339
 # Error: "Unable to get ACTIONS_ID_TOKEN_REQUEST_URL env variable"
-# This workflow will remain disabled until the upstream issue is resolved.
+# Monitor for failures and disable if issues persist.
 
-name: Claude Code Review (DISABLED)
+name: Claude Code Review
 
 on:
   # Disabled due to fork PR failures - see issue link above
@@ -12,11 +12,8 @@ on:
 
 jobs:
   claude-review:
-    # DISABLED: Prevent job from running due to fork PR failures
-    # Remove this condition when upstream issue is resolved
-    if: false
-    
-    # Optional: Filter by PR author (commented out while disabled)
+    # Optional: Filter by PR author to limit review scope
+    # Uncomment to only run on specific contributors:
     # if: |
     #   github.event.pull_request.user.login == 'external-contributor' ||
     #   github.event.pull_request.user.login == 'new-developer' ||
