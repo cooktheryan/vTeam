@@ -20,12 +20,15 @@ jobs:
           - name: frontend
             context: ./components/frontend
             image: quay.io/ambient_code/vteam_frontend
+            dockerfile: Dockerfile
           - name: backend
             context: ./components/backend
             image: quay.io/ambient_code/vteam_backend
+            dockerfile: Dockerfile
           - name: operator
             context: ./components/operator
             image: quay.io/ambient_code/vteam_operator
+            dockerfile: Dockerfile
           - name: claude-code-runner
             context: ./components/runners
             image: quay.io/ambient_code/vteam_claude_runner
