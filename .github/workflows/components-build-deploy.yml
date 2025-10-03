@@ -20,19 +20,19 @@ jobs:
           - name: frontend
             context: ./components/frontend
             image: quay.io/ambient_code/vteam_frontend
-            dockerfile: Dockerfile
+            dockerfile: ./components/frontend/Dockerfile
           - name: backend
             context: ./components/backend
             image: quay.io/ambient_code/vteam_backend
-            dockerfile: Dockerfile
+            dockerfile: ./components/backend/Dockerfile
           - name: operator
             context: ./components/operator
             image: quay.io/ambient_code/vteam_operator
-            dockerfile: Dockerfile
+            dockerfile: ./components/operator/Dockerfile
           - name: claude-code-runner
             context: ./components/runners
             image: quay.io/ambient_code/vteam_claude_runner
-            dockerfile: claude-code-runner/Dockerfile
+            dockerfile: ./components/runners/claude-code-runner/Dockerfile
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
