@@ -1,6 +1,6 @@
 import React from "react";
 import { MessageObject, ToolUseMessages } from "@/types/agentic-session";
-import { Message } from "@/components/ui/message";
+import { LoadingDots, Message } from "@/components/ui/message";
 import { ToolMessage } from "@/components/ui/tool-message";
 import { ThinkingMessage } from "@/components/ui/thinking-message";
 import { SystemMessage } from "@/components/ui/system-message";
@@ -10,10 +10,11 @@ export type StreamMessageProps = {
   message: MessageObject | ToolUseMessages;
   onGoToResults?: () => void;
   plainCard?: boolean;
+  isNewest?: boolean;
 };
 
 
-export const StreamMessage: React.FC<StreamMessageProps> = ({ message, onGoToResults, plainCard=false }) => {
+export const StreamMessage: React.FC<StreamMessageProps> = ({ message, onGoToResults, plainCard=false, isNewest=false }) => {
   const isToolUsePair = (m: MessageObject | ToolUseMessages): m is ToolUseMessages =>
     m != null && typeof m === "object" && "toolUseBlock" in m && "resultBlock" in m;
 
@@ -23,17 +24,26 @@ export const StreamMessage: React.FC<StreamMessageProps> = ({ message, onGoToRes
 
   const m = message as MessageObject;
   switch (m.type) {
+    case "agent_running": {
+      if (!isNewest) return null;
+      return <LoadingDots />;
+    }
+    case "agent_waiting": {
+      if (!isNewest) return null;
+      return (
+        <span className="text-xs text-gray-500">Waiting for input...</span>
+      )
+    }
     case "user_message":
-    case "assistant_message": {
+    case "agent_message": {
       if (typeof m.content === "string") {
-        return <Message role={m.type === "assistant_message" ? "bot" : "user"} content={m.content} name="Claude AI" borderless={plainCard}/>;
+        return <Message role={m.type === "agent_message" ? "bot" : "user"} content={m.content} name="Claude AI" borderless={plainCard}/>;
       }
-      // Thinking (new): show above, expandable
       switch (m.content.type) {
         case "thinking_block":
           return <ThinkingMessage block={m.content} />
         case "text_block":
-          return <Message role={m.type === "assistant_message" ? "bot" : "user"} content={m.content.text} name="Claude AI" borderless={plainCard}/>
+          return <Message role={m.type === "agent_message" ? "bot" : "user"} content={m.content.text} name="Claude AI" borderless={plainCard}/>
         case "tool_use_block":
           return <ToolMessage toolUseBlock={m.content} borderless={plainCard}/>
         case "tool_result_block":
