@@ -34,18 +34,32 @@ rules:
       - pods
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
+  # Additional core resources needed for RBAC grant permissions
+  - apiGroups: [""]
+    resources:
+      - serviceaccounts/token
+      - pods/log
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
   # Apps
   - apiGroups: ["apps"]
     resources:
       - deployments
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
-  # RBAC
+  # Batch jobs
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # RBAC - needs full access to manage ClusterRoles
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources:
       - clusterroles
       - clusterrolebindings
       - rolebindings
+      - roles
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
   # Custom Resource Definitions
@@ -54,11 +68,39 @@ rules:
       - customresourcedefinitions
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
+  # vTeam Custom Resources
+  - apiGroups: ["vteam.ambient-code"]
+    resources:
+      - agenticsessions
+      - projectsettings
+      - rfeworkflows
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # vTeam Custom Resources status
+  - apiGroups: ["vteam.ambient-code"]
+    resources:
+      - agenticsessions/status
+      - projectsettings/status
+      - rfeworkflows/status
+    verbs: ["get", "update", "patch"]
+
   # OpenShift Routes
   - apiGroups: ["route.openshift.io"]
     resources:
       - routes
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # OpenShift Projects
+  - apiGroups: ["project.openshift.io"]
+    resources:
+      - projects
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Authentication (for TokenReview)
+  - apiGroups: ["authentication.k8s.io"]
+    resources:
+      - tokenreviews
+    verbs: ["create"]
 ---
 # ClusterRoleBinding to bind the ClusterRole to the service account for cluster-scoped resources
 apiVersion: rbac.authorization.k8s.io/v1
