@@ -25,6 +25,7 @@ const formSchema = z.object({
   title: z.string().min(5, "Title must be at least 5 characters long"),
   description: z.string().min(20, "Description must be at least 20 characters long"),
   workspacePath: z.string().optional(),
+  parentOutcome: z.string().optional(),
   umbrellaRepo: repoSchema,
   supportingRepos: z.array(repoSchema).optional().default([]),
 });
@@ -45,6 +46,7 @@ export default function ProjectNewRFEWorkflowPage() {
       title: "",
       description: "",
       workspacePath: "",
+      parentOutcome: "",
       umbrellaRepo: { url: "", branch: "main" },
       supportingRepos: [],
     },
@@ -64,6 +66,7 @@ export default function ProjectNewRFEWorkflowPage() {
         title: values.title,
         description: values.description,
         workspacePath: values.workspacePath || undefined,
+        parentOutcome: values.parentOutcome?.trim() || undefined,
         umbrellaRepo: {
           url: values.umbrellaRepo.url.trim(),
           branch: (values.umbrellaRepo.branch || "main").trim(),
@@ -124,6 +127,14 @@ export default function ProjectNewRFEWorkflowPage() {
                     <FormLabel>Description</FormLabel>
                     <FormControl><Textarea placeholder="Describe the feature requirements, goals, and context..." rows={4} {...field} /></FormControl>
                     <FormDescription>Detailed description of what needs to be built and why</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="parentOutcome" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Jira Outcome <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                    <FormControl><Input placeholder="e.g., RHASTRAT-456" {...field} /></FormControl>
+                    <FormDescription>Jira Outcome key that Features created from this RFE will link to</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )} />

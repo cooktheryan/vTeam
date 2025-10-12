@@ -211,6 +211,7 @@ export type RFEWorkflow = {
   umbrellaRepo?: GitRepository; // required in CRD, but optional in API reads
   supportingRepos?: GitRepository[];
   workspacePath?: string; // CRD-aligned optional path
+  parentOutcome?: string; // Optional parent Jira Outcome key (e.g., RHASTRAT-456)
   agentSessions?: RFESession[];
   artifacts?: ArtifactFile[];
 	createdAt: string;
@@ -225,6 +226,7 @@ export type CreateRFEWorkflowRequest = {
   umbrellaRepo: GitRepository;
   supportingRepos?: GitRepository[];
   workspacePath?: string;
+  parentOutcome?: string; // Optional parent Jira Outcome key (e.g., RHASTRAT-456)
 };
 
 export type PhaseResult = {

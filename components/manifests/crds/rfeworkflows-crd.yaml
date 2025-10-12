@@ -62,6 +62,9 @@ spec:
                       description: "Branch to checkout"
               workspacePath:
                 type: string
+              parentOutcome:
+                type: string
+                description: "Optional parent Jira Outcome key (e.g., RHASTRAT-456) that Features will link to"
               jiraLinks:
                 type: array
                 description: "Links between workspace files and Jira issues"

@@ -239,20 +239,25 @@ export default function ProjectRFEDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="text-sm text-muted-foreground">Workspace: {workflowWorkspace}</div>
+            {workflow.parentOutcome && (
+              <div className="mt-2 text-sm">
+                <span className="font-medium">Parent Outcome:</span> <Badge variant="outline">{workflow.parentOutcome}</Badge>
+              </div>
+            )}
             {(workflow.umbrellaRepo || (workflow.supportingRepos || []).length > 0) && (
               <div className="mt-2 space-y-1">
                 {workflow.umbrellaRepo && (
                   <div className="text-sm">
                     <span className="font-medium">Umbrella:</span> {workflow.umbrellaRepo.url}
                     {workflow.umbrellaRepo.branch && <span className="text-muted-foreground"> @ {workflow.umbrellaRepo.branch}</span>}
-                    
+
                   </div>
                 )}
                 {(workflow.supportingRepos || []).map((r: { url: string; branch?: string; clonePath?: string }, i: number) => (
                   <div key={i} className="text-sm">
                     <span className="font-medium">Supporting:</span> {r.url}
                     {r.branch && <span className="text-muted-foreground"> @ {r.branch}</span>}
-                    
+
                   </div>
                 ))}
               </div>
@@ -334,8 +339,8 @@ export default function ProjectRFEDetailPage() {
                         return `${firstFeaturePath}/tasks.md`;
                       })();
                       const exists = phase === "ideate" ? rfeDoc.exists : (phase === "specify" ? specKitDir.spec.exists : phase === "plan" ? specKitDir.plan.exists : phase === "tasks" ? specKitDir.tasks.exists : false);
-                      const linkedKey = Array.isArray((workflow as unknown as { jiraLinks?: Array<{ path: string; jiraKey: string }> }).jiraLinks)
-                        ? ((workflow as unknown as { jiraLinks?: Array<{ path: string; jiraKey: string }> }).jiraLinks || []).find(l => l.path === expected)?.jiraKey
+                      const linkedKey = Array.isArray(workflow.jiraLinks)
+                        ? (workflow.jiraLinks || []).find(l => l.path === expected)?.jiraKey
                         : undefined;
                       const sessionForPhase = rfeSessions.find(s => (s.metadata.labels)?.["rfe-phase"] === phase);
                       const sessionDisplay = (sessionForPhase && typeof (sessionForPhase as AgenticSession).spec?.displayName === 'string')
@@ -409,6 +414,7 @@ export default function ProjectRFEDetailPage() {
                                             environmentVariables: {
                                               WORKFLOW_PHASE: phase,
                                               PARENT_RFE: workflow.id,
+                                              AUTO_PUSH_ON_COMPLETE: "true",
                                             },
                                             labels: {
                                               project,
@@ -475,6 +481,7 @@ export default function ProjectRFEDetailPage() {
                                           environmentVariables: {
                                             WORKFLOW_PHASE: phase,
                                             PARENT_RFE: workflow.id,
+                                            AUTO_PUSH_ON_COMPLETE: "true",
                                           },
                                           labels: {
                                             project,
@@ -529,7 +536,7 @@ export default function ProjectRFEDetailPage() {
                                   const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(id)}/jira`, {
                                     method: "POST",
                                     headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ path: expected }),
+                                    body: JSON.stringify({ path: expected, phase: phase }),
                                   });
                                   const data = await resp.json().catch(() => ({}));
                                   if (!resp.ok) throw new Error(data?.error || `HTTP ${resp.status}`);
