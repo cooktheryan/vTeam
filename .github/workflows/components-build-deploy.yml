@@ -32,6 +32,7 @@ jobs:
               - 'components/backend/**'
             operator:
               - 'components/operator/**'
+              - 'components/backend/**'
             claude-runner:
               - 'components/runners/**'
 
