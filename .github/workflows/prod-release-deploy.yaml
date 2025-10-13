@@ -248,12 +248,12 @@ jobs:
 
       - name: Update frontend if changed
         run: |
-          oc patch deployment frontend -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"vteam-frontend\",\"image\":\"quay.io/ambient_code/vteam_frontend:${{ needs.release.outputs.new_tag }}\"}]}}}}"
+          oc patch deployment frontend -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"frontend\",\"image\":\"quay.io/ambient_code/vteam_frontend:${{ needs.release.outputs.new_tag }}\"}]}}}}"
 
       - name: Update backend if changed
         run: |
-          oc patch deployment backend-api -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"vteam-backend\",\"image\":\"quay.io/ambient_code/vteam_backend:${{ needs.release.outputs.new_tag }}\"}]}}}}"
+          oc patch deployment backend-api -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"backend-api\",\"image\":\"quay.io/ambient_code/vteam_backend:${{ needs.release.outputs.new_tag }}\"}]}}}}"
 
       - name: Update operator if changed
         run: |
-          oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"vteam-operator\",\"image\":\"quay.io/ambient_code/vteam_operator:${{ needs.release.outputs.new_tag }}\"}]}}}}"
+          oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"image\":\"quay.io/ambient_code/vteam_operator:${{ needs.release.outputs.new_tag }}\"}]}}}}"

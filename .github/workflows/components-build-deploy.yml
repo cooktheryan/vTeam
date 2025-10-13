@@ -187,12 +187,12 @@ jobs:
       - name: Update frontend if changed
         if: matrix.component.name == 'frontend' && matrix.component.changed == 'true'
         run: |
-          oc patch deployment frontend -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"vteam-frontend\",\"image\":\"quay.io/ambient_code/vteam_frontend:${{ github.sha }}\"}]}}}}"
+          oc patch deployment frontend -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"frontend\",\"image\":\"quay.io/ambient_code/vteam_frontend:${{ github.sha }}\"}]}}}}"
       - name: Update backend if changed
         if: matrix.component.name == 'backend' && matrix.component.changed == 'true'
         run: |
-          oc patch deployment backend-api -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"vteam-backend\",\"image\":\"quay.io/ambient_code/vteam_backend:${{ github.sha }}\"}]}}}}"
+          oc patch deployment backend-api -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"backend-api\",\"image\":\"quay.io/ambient_code/vteam_backend:${{ github.sha }}\"}]}}}}"
       - name: Update operator if changed
         if: matrix.component.name == 'operator' && matrix.component.changed == 'true'
         run: |
-          oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"vteam-operator\",\"image\":\"quay.io/ambient_code/vteam_operator:${{ github.sha }}\"}]}}}}"
+          oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"image\":\"quay.io/ambient_code/vteam_operator:${{ github.sha }}\"}]}}}}"
