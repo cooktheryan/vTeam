@@ -70,8 +70,6 @@ jobs:
       - name: Checkout code
         if: matrix.component.changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Docker Buildx
         if: matrix.component.changed == 'true' || github.event_name == 'workflow_dispatch'
@@ -96,7 +94,7 @@ jobs:
           password: ${{ secrets.REDHAT_PASSWORD }}
 
       - name: Build and push ${{ matrix.component.name }} image only for merge into main
-        if: (matrix.component.changed == 'true' || github.event_name == 'workflow_dispatch') && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: (matrix.component.changed == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.component.context }}
