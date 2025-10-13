@@ -238,6 +238,10 @@ jobs:
         run: |
           oc login ${{ secrets.PROD_OPENSHIFT_SERVER }} --token=${{ secrets.PROD_OPENSHIFT_TOKEN }} --insecure-skip-tls-verify
 
+      - name: Delete deployments in ambient-code namespace to force re-deploy
+        run: |
+          oc delete deployement --all -n ambient-code
+
       - name: Deploy updated components to OpenShift
         run: |
           oc apply -k components/manifests
@@ -253,6 +257,3 @@ jobs:
       - name: Update operator if changed
         run: |
           oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"vteam-operator\",\"image\":\"quay.io/ambient_code/vteam_operator:${{ needs.release.outputs.new_tag }}\"}]}}}}"
-
-      - name: force restart of pods to pick up changes
-        run: oc delete po --all -n ambient-code
