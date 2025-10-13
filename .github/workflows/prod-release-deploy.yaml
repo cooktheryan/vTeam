@@ -240,7 +240,7 @@ jobs:
 
       - name: Delete deployments in ambient-code namespace to force re-deploy
         run: |
-          oc delete deployement --all -n ambient-code
+          oc delete deployment --all -n ambient-code
 
       - name: Deploy updated components to OpenShift
         run: |
