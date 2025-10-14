@@ -119,34 +119,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  patch-yaml:
-    runs-on: ubuntu-latest
-    needs: [detect-changes, build-and-push]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.operator == 'true' || needs.detect-changes.outputs.claude-runner == 'true') || github.event_name == 'workflow_dispatch'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Install oc
-        uses: redhat-actions/oc-installer@v1
-        with:
-          oc_version: 'latest'
-
-      - name: Log in to OpenShift Cluster
-        run: |
-          oc login ${{ secrets.OPENSHIFT_SERVER }} --token=${{ secrets.OPENSHIFT_TOKEN }} --insecure-skip-tls-verify
-
-      - name: Delete deployments in ambient-code namespace to force re-deploy
-        run: |
-          oc delete deployment --all -n ambient-code
-
-      - name: Deploy updated components to OpenShift
-        run: |
-          oc apply -k components/manifests
-
   deploy-to-openshift:
     runs-on: ubuntu-latest
-    needs: [detect-changes, build-and-push, patch-yaml]
+    needs: [detect-changes, build-and-push]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.operator == 'true' || needs.detect-changes.outputs.claude-runner == 'true') || github.event_name == 'workflow_dispatch'
     strategy:
       matrix:
@@ -185,14 +160,22 @@ jobs:
           oc login ${{ secrets.OPENSHIFT_SERVER }} --token=${{ secrets.OPENSHIFT_TOKEN }} --insecure-skip-tls-verify
 
       - name: Update frontend if changed
-        if: matrix.component.name == 'frontend' && matrix.component.changed == 'true'
+        if: matrix.component.name == 'frontend' && matrix.component.changed == 'true' || github.event_name == 'workflow_dispatch'
         run: |
+          oc delete deployment frontend -n ambient-code
+          oc apply -f components/manifests/frontend-deployment.yaml -n ambient-code
           oc patch deployment frontend -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"frontend\",\"image\":\"quay.io/ambient_code/vteam_frontend:${{ github.sha }}\"}]}}}}"
+
       - name: Update backend if changed
-        if: matrix.component.name == 'backend' && matrix.component.changed == 'true'
+        if: matrix.component.name == 'backend' && matrix.component.changed == 'true' || github.event_name == 'workflow_dispatch'
         run: |
+          oc delete deployment backend-api -n ambient-code
+          oc apply -f components/manifests/backend-deployment.yaml -n ambient-code
           oc patch deployment backend-api -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"backend-api\",\"image\":\"quay.io/ambient_code/vteam_backend:${{ github.sha }}\"}]}}}}"
+
       - name: Update operator if changed
-        if: matrix.component.name == 'operator' && matrix.component.changed == 'true'
+        if: matrix.component.name == 'operator' && matrix.component.changed == 'true' || github.event_name == 'workflow_dispatch'
         run: |
+          oc delete deployment agentic-operator -n ambient-code
+          oc apply -f components/manifests/operator-deployment.yaml -n ambient-code
           oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"image\":\"quay.io/ambient_code/vteam_operator:${{ github.sha }}\"}]}}}}"
