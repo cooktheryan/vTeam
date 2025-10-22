@@ -1,10 +1,8 @@
 # Build stage
-FROM golang:1.24-alpine AS builder
+FROM registry.access.redhat.com/ubi9/go-toolset:1.24 AS builder
 
+USER 0
 WORKDIR /app
-
-# Install git and build dependencies
-RUN apk add --no-cache git build-base
 
 # Copy go mod and sum files
 COPY go.mod go.sum ./
@@ -19,9 +17,9 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o main .
 
 # Final stage
-FROM alpine:latest
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
-RUN apk --no-cache add ca-certificates git
+RUN microdnf install -y git ps && microdnf clean all
 WORKDIR /app
 
 # Copy the binary from builder stage
