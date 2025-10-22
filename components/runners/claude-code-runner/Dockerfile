@@ -1,13 +1,14 @@
-FROM registry.access.redhat.com/ubi9/python-311:latest
+FROM python:3.11-slim
 
-USER 0
-
-# Install system dependencies including Node.js 20
-RUN dnf install -y git curl ca-certificates && \
-    curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - && \
-    dnf install -y nodejs && \
-    npm install -g @anthropic-ai/claude-code && \
-    dnf clean all
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    ca-certificates \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g @anthropic-ai/claude-code \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create working directory
 WORKDIR /app
