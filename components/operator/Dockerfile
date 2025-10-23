@@ -21,11 +21,15 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 WORKDIR /app
 
+RUN microdnf install -y procps && microdnf clean all
+
 # Copy the binary from builder stage
 COPY --from=builder /app/operator .
 
 # Set executable permissions and make accessible to any user
-RUN chmod +x ./operator && chmod 755 /app
+RUN chmod +x ./operator && chmod 775 /app
+
+USER 1001
 
 # Command to run the executable
 CMD ["./operator"]
