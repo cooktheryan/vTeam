@@ -41,20 +41,16 @@ COPY --from=builder /app/public ./public
 
 USER 0
 
-# Create .next directory and set permissions for arbitrary UIDs
-# OpenShift runs containers with random UIDs in the root group (GID 0)
-# chmod g=u gives the root group the same permissions as the owner
-RUN mkdir -p .next && \
-    chmod -R g=u /app && \
-    chgrp -R 0 /app
-
 # Automatically leverage output traces to reduce image size
 # https://nextjs.org/docs/advanced-features/output-file-tracing
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Fix permissions after final copy
-RUN chmod -R g=u /app && \
+# Create directories and set permissions for OpenShift arbitrary UIDs
+# OpenShift runs containers with random UIDs in the root group (GID 0)
+# chmod g=u gives the root group the same permissions as the owner
+RUN mkdir -p .next && \
+    chmod -R g=u /app && \
     chgrp -R 0 /app
 
 USER 1001
