@@ -120,9 +120,31 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy-to-openshift:
+  update-rbac-and-crd:
     runs-on: ubuntu-latest
     needs: [detect-changes, build-and-push]
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install oc
+        uses: redhat-actions/oc-installer@v1
+        with:
+          oc_version: 'latest'
+
+      - name: Log in to OpenShift Cluster
+        run: |
+          oc login ${{ secrets.OPENSHIFT_SERVER }} --token=${{ secrets.OPENSHIFT_TOKEN }} --insecure-skip-tls-verify
+
+      - name: Apply RBAC and CRD manifests
+        run: |
+          oc apply -f components/manifests/crds/ -n ambient-code
+          oc apply -f components/manifests/rbac/ -n ambient-code
+
+  deploy-to-openshift:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-and-push, update-rbac-and-crd]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.operator == 'true' || needs.detect-changes.outputs.claude-runner == 'true')
     strategy:
       matrix:
@@ -202,7 +224,7 @@ jobs:
 
   deploy-with-disptach:
     runs-on: ubuntu-latest
-    needs: [detect-changes, build-and-push]
+    needs: [detect-changes, build-and-push, update-rbac-and-crd]
     if: github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout code
