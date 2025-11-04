@@ -169,6 +169,11 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 			log.Printf("Job %s not found, already cleaned up", jobName)
 		}
 
+		// Also cleanup ambient-vertex secret when session is stopped
+		if err := deleteAmbientVertexSecret(sessionNamespace); err != nil {
+			log.Printf("Failed to delete ambient-vertex secret from %s: %v", sessionNamespace, err)
+		}
+
 		return nil
 	}
 
@@ -548,6 +553,20 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	}
 
 	// Do not mount runner Secret volume; runner fetches tokens on demand
+
+	// Check for ambient-vertex secret in the operator's namespace and copy it if it exists
+	operatorNamespace := appConfig.BackendNamespace // Assuming operator runs in same namespace as backend
+	if ambientVertexSecret, err := config.K8sClient.CoreV1().Secrets(operatorNamespace).Get(context.TODO(), "ambient-vertex", v1.GetOptions{}); err == nil {
+		// Secret exists in operator namespace, copy it to the session namespace
+		log.Printf("Found ambient-vertex secret in %s, copying to %s", operatorNamespace, sessionNamespace)
+		if err := copySecretToNamespace(ambientVertexSecret, sessionNamespace, currentObj); err != nil {
+			log.Printf("Failed to copy ambient-vertex secret to %s: %v", sessionNamespace, err)
+		} else {
+			log.Printf("Successfully copied ambient-vertex secret to %s", sessionNamespace)
+		}
+	} else if !errors.IsNotFound(err) {
+		log.Printf("Error checking for ambient-vertex secret: %v", err)
+	}
 
 	// Update status to Creating before attempting job creation
 	if err := updateAgenticSessionStatus(sessionNamespace, name, map[string]interface{}{
@@ -979,6 +998,12 @@ func deleteJobAndPerJobService(namespace, jobName, sessionName string) error {
 		log.Printf("Failed to list pods for job %s/%s: %v", namespace, jobName, err)
 	}
 
+	// Delete the ambient-vertex secret if it was copied by the operator
+	if err := deleteAmbientVertexSecret(namespace); err != nil {
+		log.Printf("Failed to delete ambient-vertex secret from %s: %v", namespace, err)
+		// Don't return error - this is a non-critical cleanup step
+	}
+
 	// NOTE: PVC is kept for all sessions and only deleted via garbage collection
 	// when the session CR is deleted. This allows sessions to be restarted.
 
@@ -1120,6 +1145,95 @@ func CleanupExpiredTempContentPods() {
 			}
 		}
 	}
+}
+
+// copySecretToNamespace copies a secret to a target namespace with owner references
+func copySecretToNamespace(sourceSecret *corev1.Secret, targetNamespace string, ownerObj *unstructured.Unstructured) error {
+	// Create a new secret in the target namespace
+	newSecret := &corev1.Secret{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      sourceSecret.Name,
+			Namespace: targetNamespace,
+			Labels:    sourceSecret.Labels,
+			Annotations: map[string]string{
+				"vteam.ambient-code/copied-from": fmt.Sprintf("%s/%s", sourceSecret.Namespace, sourceSecret.Name),
+			},
+			OwnerReferences: []v1.OwnerReference{
+				{
+					APIVersion: ownerObj.GetAPIVersion(),
+					Kind:       ownerObj.GetKind(),
+					Name:       ownerObj.GetName(),
+					UID:        ownerObj.GetUID(),
+					Controller: boolPtr(true),
+				},
+			},
+		},
+		Type: sourceSecret.Type,
+		Data: sourceSecret.Data,
+	}
+
+	// Check if secret already exists in target namespace
+	if existingSecret, err := config.K8sClient.CoreV1().Secrets(targetNamespace).Get(context.TODO(), sourceSecret.Name, v1.GetOptions{}); err == nil {
+		// Secret already exists, check if it needs to be updated
+		log.Printf("Secret %s already exists in namespace %s, checking if update needed", sourceSecret.Name, targetNamespace)
+
+		// Check if the existing secret has the correct owner reference
+		hasOwnerRef := false
+		for _, ownerRef := range existingSecret.OwnerReferences {
+			if ownerRef.UID == ownerObj.GetUID() {
+				hasOwnerRef = true
+				break
+			}
+		}
+
+		if hasOwnerRef {
+			log.Printf("Secret %s already has correct owner reference, skipping", sourceSecret.Name)
+			return nil
+		}
+
+		// Update the secret with owner reference
+		existingSecret.OwnerReferences = append(existingSecret.OwnerReferences, newSecret.OwnerReferences[0])
+		existingSecret.Data = sourceSecret.Data
+		if existingSecret.Annotations == nil {
+			existingSecret.Annotations = make(map[string]string)
+		}
+		existingSecret.Annotations["vteam.ambient-code/copied-from"] = fmt.Sprintf("%s/%s", sourceSecret.Namespace, sourceSecret.Name)
+
+		_, err = config.K8sClient.CoreV1().Secrets(targetNamespace).Update(context.TODO(), existingSecret, v1.UpdateOptions{})
+		return err
+	} else if !errors.IsNotFound(err) {
+		return fmt.Errorf("error checking for existing secret: %w", err)
+	}
+
+	// Create the secret
+	_, err := config.K8sClient.CoreV1().Secrets(targetNamespace).Create(context.TODO(), newSecret, v1.CreateOptions{})
+	return err
+}
+
+// deleteAmbientVertexSecret deletes the ambient-vertex secret from a namespace if it was copied
+func deleteAmbientVertexSecret(namespace string) error {
+	secret, err := config.K8sClient.CoreV1().Secrets(namespace).Get(context.TODO(), "ambient-vertex", v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Secret doesn't exist, nothing to do
+			return nil
+		}
+		return fmt.Errorf("error checking for ambient-vertex secret: %w", err)
+	}
+
+	// Check if this was a copied secret (has the annotation)
+	if _, ok := secret.Annotations["vteam.ambient-code/copied-from"]; !ok {
+		log.Printf("ambient-vertex secret in namespace %s was not copied by operator, not deleting", namespace)
+		return nil
+	}
+
+	log.Printf("Deleting copied ambient-vertex secret from namespace %s", namespace)
+	err = config.K8sClient.CoreV1().Secrets(namespace).Delete(context.TODO(), "ambient-vertex", v1.DeleteOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("failed to delete ambient-vertex secret: %w", err)
+	}
+
+	return nil
 }
 
 // Helper functions
