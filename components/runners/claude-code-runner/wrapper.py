@@ -153,9 +153,19 @@ class ClaudeCodeAdapter:
         """Execute the Claude Code SDK with the given prompt."""
         try:
             from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+
+            # Check for authentication method: API key or service account
             api_key = self.context.get_env('ANTHROPIC_API_KEY', '')
-            if not api_key:
-                raise RuntimeError("ANTHROPIC_API_KEY is required for Claude Code SDK")
+            use_vertex = self.context.get_env('USE_VERTEX_AI', '').strip().lower() in ('1', 'true', 'yes')
+
+            # Determine which authentication method to use
+            if not api_key and not use_vertex:
+                raise RuntimeError("Either ANTHROPIC_API_KEY or USE_VERTEX_AI=true must be set")
+
+            # Configure Vertex AI if requested
+            vertex_credentials = None
+            if use_vertex:
+                vertex_credentials = await self._setup_vertex_credentials()
 
             # Check if continuing from previous session
             # If PARENT_SESSION_ID is set, use SDK's built-in resume functionality
@@ -266,7 +276,15 @@ class ClaudeCodeAdapter:
                 except Exception:
                     pass
 
-            os.environ['ANTHROPIC_API_KEY'] = api_key
+            # Set API key in environment if using direct API key authentication
+            if api_key:
+                os.environ['ANTHROPIC_API_KEY'] = api_key
+
+            # Set Vertex AI environment variables if using service account
+            if use_vertex and vertex_credentials:
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = vertex_credentials.get('credentials_path', '')
+                os.environ['GOOGLE_CLOUD_PROJECT'] = vertex_credentials.get('project_id', '')
+                os.environ['GOOGLE_CLOUD_REGION'] = vertex_credentials.get('region', '')
 
             result_payload = None
             self._turn_count = 0
@@ -430,6 +448,39 @@ class ClaudeCodeAdapter:
                 "success": False,
                 "error": str(e)
             }
+
+    async def _setup_vertex_credentials(self) -> dict:
+        """Set up Google Cloud Vertex AI credentials from service account.
+
+        Returns:
+            dict with 'credentials_path', 'project_id', and 'region'
+
+        Raises:
+            RuntimeError: If required Vertex AI configuration is missing
+        """
+        # Get service account configuration from environment
+        service_account_path = self.context.get_env('GOOGLE_APPLICATION_CREDENTIALS', '').strip()
+        project_id = self.context.get_env('GOOGLE_CLOUD_PROJECT', '').strip()
+        region = self.context.get_env('GOOGLE_CLOUD_REGION', '').strip() or 'us-east5'
+
+        # Validate required fields
+        if not service_account_path:
+            raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS must be set when USE_VERTEX_AI=true")
+        if not project_id:
+            raise RuntimeError("GOOGLE_CLOUD_PROJECT must be set when USE_VERTEX_AI=true")
+
+        # Verify service account file exists
+        if not Path(service_account_path).exists():
+            raise RuntimeError(f"Service account key file not found at {service_account_path}")
+
+        logging.info(f"Vertex AI configured: project={project_id}, region={region}")
+        await self._send_log(f"Using Vertex AI with project {project_id} in {region}")
+
+        return {
+            'credentials_path': service_account_path,
+            'project_id': project_id,
+            'region': region,
+        }
 
     async def _prepare_workspace(self):
         """Clone input repo/branch into workspace and configure git remotes."""
