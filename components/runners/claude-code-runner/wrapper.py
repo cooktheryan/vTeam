@@ -152,9 +152,8 @@ class ClaudeCodeAdapter:
     async def _run_claude_agent_sdk(self, prompt: str):
         """Execute the Claude Code SDK with the given prompt."""
         try:
-            from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
-
             # Check for authentication method: API key or service account
+            # IMPORTANT: Must check and set env vars BEFORE importing SDK
             api_key = self.context.get_env('ANTHROPIC_API_KEY', '')
             # Operator passes CLAUDE_CODE_USER_VERTEX from its environment
             use_vertex = self.context.get_env('CLAUDE_CODE_USER_VERTEX', '').strip().lower() in ('1', 'true', 'yes')
@@ -163,10 +162,25 @@ class ClaudeCodeAdapter:
             if not api_key and not use_vertex:
                 raise RuntimeError("Either ANTHROPIC_API_KEY or CLAUDE_CODE_USER_VERTEX=true must be set")
 
+            # Set environment variables BEFORE importing SDK
+            # The Anthropic SDK checks these during initialization
+            if api_key:
+                os.environ['ANTHROPIC_API_KEY'] = api_key
+                logging.info("Using Anthropic API key authentication")
+
             # Configure Vertex AI if requested
-            vertex_credentials = None
             if use_vertex:
                 vertex_credentials = await self._setup_vertex_credentials()
+                # Clear API key if set, to force Vertex AI mode
+                if 'ANTHROPIC_API_KEY' in os.environ:
+                    del os.environ['ANTHROPIC_API_KEY']
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = vertex_credentials.get('credentials_path', '')
+                os.environ['ANTHROPIC_VERTEX_PROJECT_ID'] = vertex_credentials.get('project_id', '')
+                os.environ['CLOUD_ML_REGION'] = vertex_credentials.get('region', '')
+                logging.info(f"Using Vertex AI authentication: project={vertex_credentials.get('project_id')}, region={vertex_credentials.get('region')}")
+
+            # NOW we can safely import the SDK with the correct environment set
+            from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
             # Check if continuing from previous session
             # If PARENT_SESSION_ID is set, use SDK's built-in resume functionality
@@ -276,17 +290,6 @@ class ClaudeCodeAdapter:
                     options.temperature = float(temperature_env)  # type: ignore[attr-defined]
                 except Exception:
                     pass
-
-            # Set API key in environment if using direct API key authentication
-            if api_key:
-                os.environ['ANTHROPIC_API_KEY'] = api_key
-
-            # Set Vertex AI environment variables if using service account
-            # The operator already passes these, but ensure they're set for the SDK
-            if use_vertex and vertex_credentials:
-                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = vertex_credentials.get('credentials_path', '')
-                os.environ['ANTHROPIC_VERTEX_PROJECT_ID'] = vertex_credentials.get('project_id', '')
-                os.environ['CLOUD_ML_REGION'] = vertex_credentials.get('region', '')
 
             result_payload = None
             self._turn_count = 0
