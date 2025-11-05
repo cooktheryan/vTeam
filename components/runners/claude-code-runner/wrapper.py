@@ -481,7 +481,7 @@ class ClaudeCodeAdapter:
         # These are passed by the operator from its own environment
         service_account_path = self.context.get_env('GOOGLE_APPLICATION_CREDENTIALS', '').strip()
         project_id = self.context.get_env('ANTHROPIC_VERTEX_PROJECT_ID', '').strip()
-        region = self.context.get_env('CLOUD_ML_REGION', '').strip() or 'us-east5'
+        region = self.context.get_env('CLOUD_ML_REGION', '').strip()
 
         # Validate required fields
         if not service_account_path:
