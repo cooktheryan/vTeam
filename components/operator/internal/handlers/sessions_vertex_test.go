@@ -28,14 +28,14 @@ func TestCopySecretToNamespace(t *testing.T) {
 	}
 
 	tests := []struct {
-		name              string
-		sourceSecret      *corev1.Secret
-		existingSecret    *corev1.Secret
-		ownerObj          *unstructured.Unstructured
-		targetNamespace   string
-		wantErr           bool
-		errContains       string
-		validateSecret    func(*testing.T, *corev1.Secret)
+		name            string
+		sourceSecret    *corev1.Secret
+		existingSecret  *corev1.Secret
+		ownerObj        *unstructured.Unstructured
+		targetNamespace string
+		wantErr         bool
+		errContains     string
+		validateSecret  func(*testing.T, *corev1.Secret)
 	}{
 		{
 			name: "success - create new secret",
@@ -48,8 +48,8 @@ func TestCopySecretToNamespace(t *testing.T) {
 					"key.json": []byte(`{"test": "data"}`),
 				},
 			},
-			existingSecret: nil,
-			ownerObj: createSessionObj("test-session", "target-ns", "uid-123"),
+			existingSecret:  nil,
+			ownerObj:        createSessionObj("test-session", "target-ns", "uid-123"),
 			targetNamespace: "target-ns",
 			wantErr:         false,
 			validateSecret: func(t *testing.T, secret *corev1.Secret) {
@@ -108,7 +108,7 @@ func TestCopySecretToNamespace(t *testing.T) {
 				},
 				// No OwnerReferences - should be added
 			},
-			ownerObj: createSessionObj("test-session", "target-ns", "uid-456"),
+			ownerObj:        createSessionObj("test-session", "target-ns", "uid-456"),
 			targetNamespace: "target-ns",
 			wantErr:         false,
 			validateSecret: func(t *testing.T, secret *corev1.Secret) {
@@ -158,7 +158,7 @@ func TestCopySecretToNamespace(t *testing.T) {
 					"key.json": []byte(`{"existing": "data"}`),
 				},
 			},
-			ownerObj: createSessionObj("test-session", "target-ns", "uid-789"),
+			ownerObj:        createSessionObj("test-session", "target-ns", "uid-789"),
 			targetNamespace: "target-ns",
 			wantErr:         false,
 			validateSecret: func(t *testing.T, secret *corev1.Secret) {
@@ -173,10 +173,10 @@ func TestCopySecretToNamespace(t *testing.T) {
 			},
 		},
 		{
-			name: "error - source secret not found",
-			sourceSecret: nil, // Source doesn't exist
-			existingSecret: nil,
-			ownerObj: createSessionObj("test-session", "target-ns", "uid-999"),
+			name:            "error - source secret not found",
+			sourceSecret:    nil, // Source doesn't exist
+			existingSecret:  nil,
+			ownerObj:        createSessionObj("test-session", "target-ns", "uid-999"),
 			targetNamespace: "target-ns",
 			wantErr:         true,
 			errContains:     "not found",
@@ -205,7 +205,7 @@ func TestCopySecretToNamespace(t *testing.T) {
 					"key.json": []byte(`{"old": "data"}`),
 				},
 			},
-			ownerObj: createSessionObj("test-session", "target-ns", "uid-concurrent"),
+			ownerObj:        createSessionObj("test-session", "target-ns", "uid-concurrent"),
 			targetNamespace: "target-ns",
 			wantErr:         false,
 			// Retry logic should handle conflicts
@@ -221,8 +221,8 @@ func TestCopySecretToNamespace(t *testing.T) {
 					"key.json": []byte(`{"test": "data"}`),
 				},
 			},
-			existingSecret: nil,
-			ownerObj: nil,
+			existingSecret:  nil,
+			ownerObj:        nil,
 			targetNamespace: "target-ns",
 			wantErr:         true,
 			// Should panic or error on nil owner
@@ -258,7 +258,7 @@ func TestCopySecretToNamespace(t *testing.T) {
 					"key.json": []byte(`{"existing": "data"}`),
 				},
 			},
-			ownerObj: createSessionObj("new-session", "target-ns", "uid-new"),
+			ownerObj:        createSessionObj("new-session", "target-ns", "uid-new"),
 			targetNamespace: "target-ns",
 			wantErr:         false,
 			validateSecret: func(t *testing.T, secret *corev1.Secret) {
@@ -386,7 +386,7 @@ func TestDeleteAmbientVertexSecret(t *testing.T) {
 			shouldDelete: true,
 		},
 		{
-			name: "success - secret not found (already deleted)",
+			name:           "success - secret not found (already deleted)",
 			existingSecret: nil,
 			namespace:      "test-ns",
 			wantErr:        false,

@@ -14,20 +14,20 @@ import (
 // TestValidateVertexConfig tests all error cases for ValidateVertexConfig
 func TestValidateVertexConfig(t *testing.T) {
 	tests := []struct {
-		name              string
-		envVars           map[string]string
-		existingSecret    *corev1.Secret
-		wantErr           bool
-		errContains       string
-		setupK8sClient    bool
+		name           string
+		envVars        map[string]string
+		existingSecret *corev1.Secret
+		wantErr        bool
+		errContains    string
+		setupK8sClient bool
 	}{
 		{
 			name: "success - all valid",
 			envVars: map[string]string{
-				"ANTHROPIC_VERTEX_PROJECT_ID":  "test-project-123",
-				"CLOUD_ML_REGION":              "us-central1",
+				"ANTHROPIC_VERTEX_PROJECT_ID":    "test-project-123",
+				"CLOUD_ML_REGION":                "us-central1",
 				"GOOGLE_APPLICATION_CREDENTIALS": "/path/to/creds.json",
-				"OPERATOR_NAMESPACE":           "test-namespace",
+				"OPERATOR_NAMESPACE":             "test-namespace",
 			},
 			existingSecret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -49,9 +49,9 @@ func TestValidateVertexConfig(t *testing.T) {
 		{
 			name: "error - missing ANTHROPIC_VERTEX_PROJECT_ID",
 			envVars: map[string]string{
-				"CLOUD_ML_REGION":              "us-central1",
+				"CLOUD_ML_REGION":                "us-central1",
 				"GOOGLE_APPLICATION_CREDENTIALS": "/path/to/creds.json",
-				"OPERATOR_NAMESPACE":           "test-namespace",
+				"OPERATOR_NAMESPACE":             "test-namespace",
 			},
 			setupK8sClient: true,
 			wantErr:        true,
@@ -60,9 +60,9 @@ func TestValidateVertexConfig(t *testing.T) {
 		{
 			name: "error - missing CLOUD_ML_REGION",
 			envVars: map[string]string{
-				"ANTHROPIC_VERTEX_PROJECT_ID":  "test-project-123",
+				"ANTHROPIC_VERTEX_PROJECT_ID":    "test-project-123",
 				"GOOGLE_APPLICATION_CREDENTIALS": "/path/to/creds.json",
-				"OPERATOR_NAMESPACE":           "test-namespace",
+				"OPERATOR_NAMESPACE":             "test-namespace",
 			},
 			setupK8sClient: true,
 			wantErr:        true,
@@ -82,10 +82,10 @@ func TestValidateVertexConfig(t *testing.T) {
 		{
 			name: "error - empty ANTHROPIC_VERTEX_PROJECT_ID",
 			envVars: map[string]string{
-				"ANTHROPIC_VERTEX_PROJECT_ID":  "",
-				"CLOUD_ML_REGION":              "us-central1",
+				"ANTHROPIC_VERTEX_PROJECT_ID":    "",
+				"CLOUD_ML_REGION":                "us-central1",
 				"GOOGLE_APPLICATION_CREDENTIALS": "/path/to/creds.json",
-				"OPERATOR_NAMESPACE":           "test-namespace",
+				"OPERATOR_NAMESPACE":             "test-namespace",
 			},
 			setupK8sClient: true,
 			wantErr:        true,
@@ -94,10 +94,10 @@ func TestValidateVertexConfig(t *testing.T) {
 		{
 			name: "error - secret not found",
 			envVars: map[string]string{
-				"ANTHROPIC_VERTEX_PROJECT_ID":  "test-project-123",
-				"CLOUD_ML_REGION":              "us-central1",
+				"ANTHROPIC_VERTEX_PROJECT_ID":    "test-project-123",
+				"CLOUD_ML_REGION":                "us-central1",
 				"GOOGLE_APPLICATION_CREDENTIALS": "/path/to/creds.json",
-				"OPERATOR_NAMESPACE":           "test-namespace",
+				"OPERATOR_NAMESPACE":             "test-namespace",
 			},
 			existingSecret: nil, // No secret created
 			setupK8sClient: true,
@@ -107,10 +107,10 @@ func TestValidateVertexConfig(t *testing.T) {
 		{
 			name: "error - secret missing key.json field",
 			envVars: map[string]string{
-				"ANTHROPIC_VERTEX_PROJECT_ID":  "test-project-123",
-				"CLOUD_ML_REGION":              "us-central1",
+				"ANTHROPIC_VERTEX_PROJECT_ID":    "test-project-123",
+				"CLOUD_ML_REGION":                "us-central1",
 				"GOOGLE_APPLICATION_CREDENTIALS": "/path/to/creds.json",
-				"OPERATOR_NAMESPACE":           "test-namespace",
+				"OPERATOR_NAMESPACE":             "test-namespace",
 			},
 			existingSecret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -128,10 +128,10 @@ func TestValidateVertexConfig(t *testing.T) {
 		{
 			name: "error - invalid JSON in key.json",
 			envVars: map[string]string{
-				"ANTHROPIC_VERTEX_PROJECT_ID":  "test-project-123",
-				"CLOUD_ML_REGION":              "us-central1",
+				"ANTHROPIC_VERTEX_PROJECT_ID":    "test-project-123",
+				"CLOUD_ML_REGION":                "us-central1",
 				"GOOGLE_APPLICATION_CREDENTIALS": "/path/to/creds.json",
-				"OPERATOR_NAMESPACE":           "test-namespace",
+				"OPERATOR_NAMESPACE":             "test-namespace",
 			},
 			existingSecret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -149,10 +149,10 @@ func TestValidateVertexConfig(t *testing.T) {
 		{
 			name: "error - missing type field",
 			envVars: map[string]string{
-				"ANTHROPIC_VERTEX_PROJECT_ID":  "test-project-123",
-				"CLOUD_ML_REGION":              "us-central1",
+				"ANTHROPIC_VERTEX_PROJECT_ID":    "test-project-123",
+				"CLOUD_ML_REGION":                "us-central1",
 				"GOOGLE_APPLICATION_CREDENTIALS": "/path/to/creds.json",
-				"OPERATOR_NAMESPACE":           "test-namespace",
+				"OPERATOR_NAMESPACE":             "test-namespace",
 			},
 			existingSecret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -174,10 +174,10 @@ func TestValidateVertexConfig(t *testing.T) {
 		{
 			name: "error - missing project_id field",
 			envVars: map[string]string{
-				"ANTHROPIC_VERTEX_PROJECT_ID":  "test-project-123",
-				"CLOUD_ML_REGION":              "us-central1",
+				"ANTHROPIC_VERTEX_PROJECT_ID":    "test-project-123",
+				"CLOUD_ML_REGION":                "us-central1",
 				"GOOGLE_APPLICATION_CREDENTIALS": "/path/to/creds.json",
-				"OPERATOR_NAMESPACE":           "test-namespace",
+				"OPERATOR_NAMESPACE":             "test-namespace",
 			},
 			existingSecret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -199,10 +199,10 @@ func TestValidateVertexConfig(t *testing.T) {
 		{
 			name: "error - missing private_key field",
 			envVars: map[string]string{
-				"ANTHROPIC_VERTEX_PROJECT_ID":  "test-project-123",
-				"CLOUD_ML_REGION":              "us-central1",
+				"ANTHROPIC_VERTEX_PROJECT_ID":    "test-project-123",
+				"CLOUD_ML_REGION":                "us-central1",
 				"GOOGLE_APPLICATION_CREDENTIALS": "/path/to/creds.json",
-				"OPERATOR_NAMESPACE":           "test-namespace",
+				"OPERATOR_NAMESPACE":             "test-namespace",
 			},
 			existingSecret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -224,10 +224,10 @@ func TestValidateVertexConfig(t *testing.T) {
 		{
 			name: "error - missing client_email field",
 			envVars: map[string]string{
-				"ANTHROPIC_VERTEX_PROJECT_ID":  "test-project-123",
-				"CLOUD_ML_REGION":              "us-central1",
+				"ANTHROPIC_VERTEX_PROJECT_ID":    "test-project-123",
+				"CLOUD_ML_REGION":                "us-central1",
 				"GOOGLE_APPLICATION_CREDENTIALS": "/path/to/creds.json",
-				"OPERATOR_NAMESPACE":           "test-namespace",
+				"OPERATOR_NAMESPACE":             "test-namespace",
 			},
 			existingSecret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -249,10 +249,10 @@ func TestValidateVertexConfig(t *testing.T) {
 		{
 			name: "error - wrong type value",
 			envVars: map[string]string{
-				"ANTHROPIC_VERTEX_PROJECT_ID":  "test-project-123",
-				"CLOUD_ML_REGION":              "us-central1",
+				"ANTHROPIC_VERTEX_PROJECT_ID":    "test-project-123",
+				"CLOUD_ML_REGION":                "us-central1",
 				"GOOGLE_APPLICATION_CREDENTIALS": "/path/to/creds.json",
-				"OPERATOR_NAMESPACE":           "test-namespace",
+				"OPERATOR_NAMESPACE":             "test-namespace",
 			},
 			existingSecret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -275,10 +275,10 @@ func TestValidateVertexConfig(t *testing.T) {
 		{
 			name: "success - project_id mismatch with warning (non-fatal)",
 			envVars: map[string]string{
-				"ANTHROPIC_VERTEX_PROJECT_ID":  "env-project-id",
-				"CLOUD_ML_REGION":              "us-central1",
+				"ANTHROPIC_VERTEX_PROJECT_ID":    "env-project-id",
+				"CLOUD_ML_REGION":                "us-central1",
 				"GOOGLE_APPLICATION_CREDENTIALS": "/path/to/creds.json",
-				"OPERATOR_NAMESPACE":           "test-namespace",
+				"OPERATOR_NAMESPACE":             "test-namespace",
 			},
 			existingSecret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -374,11 +374,11 @@ func TestValidateVertexConfig(t *testing.T) {
 // TestValidateVertexSecret tests the validateVertexSecret helper function
 func TestValidateVertexSecret(t *testing.T) {
 	tests := []struct {
-		name         string
-		secret       *corev1.Secret
-		projectID    string
-		wantErr      bool
-		errContains  string
+		name        string
+		secret      *corev1.Secret
+		projectID   string
+		wantErr     bool
+		errContains string
 	}{
 		{
 			name: "valid secret",
