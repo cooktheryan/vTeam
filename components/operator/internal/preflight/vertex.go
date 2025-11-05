@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"ambient-code-operator/internal/config"
+	"ambient-code-operator/internal/types"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -18,7 +19,7 @@ func ValidateVertexConfig(operatorNamespace string) error {
 
 	// Check required environment variables
 	requiredEnvVars := map[string]string{
-		"ANTHROPIC_VERTEX_PROJECT_ID":   os.Getenv("ANTHROPIC_VERTEX_PROJECT_ID"),
+		"ANTHROPIC_VERTEX_PROJECT_ID":    os.Getenv("ANTHROPIC_VERTEX_PROJECT_ID"),
 		"CLOUD_ML_REGION":                os.Getenv("CLOUD_ML_REGION"),
 		"GOOGLE_APPLICATION_CREDENTIALS": os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"),
 	}
@@ -31,22 +32,21 @@ func ValidateVertexConfig(operatorNamespace string) error {
 	}
 
 	// Check that ambient-vertex secret exists in operator namespace
-	secretName := "ambient-vertex"
 	secret, err := config.K8sClient.CoreV1().Secrets(operatorNamespace).Get(
 		context.TODO(),
-		secretName,
+		types.AmbientVertexSecretName,
 		metav1.GetOptions{},
 	)
 	if err != nil {
 		return fmt.Errorf("secret '%s' not found in namespace '%s': %w\n"+
 			"Please create the secret with: kubectl create secret generic %s --from-file=key.json=/path/to/service-account.json -n %s",
-			secretName, operatorNamespace, err, secretName, operatorNamespace)
+			types.AmbientVertexSecretName, operatorNamespace, err, types.AmbientVertexSecretName, operatorNamespace)
 	}
-	log.Printf("  Secret '%s' found in namespace '%s'", secretName, operatorNamespace)
+	log.Printf("  Secret '%s' found in namespace '%s'", types.AmbientVertexSecretName, operatorNamespace)
 
 	// Validate secret structure
 	if err := validateVertexSecret(secret, os.Getenv("ANTHROPIC_VERTEX_PROJECT_ID")); err != nil {
-		return fmt.Errorf("secret '%s' is invalid: %w", secretName, err)
+		return fmt.Errorf("secret '%s' is invalid: %w", types.AmbientVertexSecretName, err)
 	}
 	log.Printf("  Secret structure validated")
 

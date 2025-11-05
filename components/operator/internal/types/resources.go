@@ -2,6 +2,11 @@ package types
 
 import "k8s.io/apimachinery/pkg/runtime/schema"
 
+const (
+	// AmbientVertexSecretName is the name of the secret containing Vertex AI credentials
+	AmbientVertexSecretName = "ambient-vertex"
+)
+
 // GetAgenticSessionResource returns the GroupVersionResource for AgenticSession
 func GetAgenticSessionResource() schema.GroupVersionResource {
 	return schema.GroupVersionResource{

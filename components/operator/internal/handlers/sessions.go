@@ -23,11 +23,6 @@ import (
 	"k8s.io/client-go/util/retry"
 )
 
-const (
-	// AmbientVertexSecretName is the name of the secret containing Vertex AI credentials
-	AmbientVertexSecretName = "ambient-vertex"
-)
-
 // WatchAgenticSessions watches for AgenticSession custom resources and creates jobs
 func WatchAgenticSessions() {
 	gvr := types.GetAgenticSessionResource()
@@ -178,7 +173,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 		// Also cleanup ambient-vertex secret when session is stopped
 		if err := deleteAmbientVertexSecret(sessionNamespace); err != nil {
-			log.Printf("Warning: Failed to cleanup %s secret from %s: %v", AmbientVertexSecretName, sessionNamespace, err)
+			log.Printf("Warning: Failed to cleanup %s secret from %s: %v", types.AmbientVertexSecretName, sessionNamespace, err)
 			// Continue - session cleanup is still successful
 		}
 
@@ -269,29 +264,29 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	operatorNamespace := appConfig.BackendNamespace // Assuming operator runs in same namespace as backend
 	vertexEnabled := os.Getenv("CLAUDE_CODE_USE_VERTEX") == "1"
 
-	if ambientVertexSecret, err := config.K8sClient.CoreV1().Secrets(operatorNamespace).Get(context.TODO(), AmbientVertexSecretName, v1.GetOptions{}); err == nil {
+	if ambientVertexSecret, err := config.K8sClient.CoreV1().Secrets(operatorNamespace).Get(context.TODO(), types.AmbientVertexSecretName, v1.GetOptions{}); err == nil {
 		// Secret exists in operator namespace, copy it to the session namespace
-		log.Printf("Found %s secret in %s, copying to %s", AmbientVertexSecretName, operatorNamespace, sessionNamespace)
+		log.Printf("Found %s secret in %s, copying to %s", types.AmbientVertexSecretName, operatorNamespace, sessionNamespace)
 		if err := copySecretToNamespace(ambientVertexSecret, sessionNamespace, currentObj); err != nil {
 			// If Vertex AI is enabled, secret copy failure is fatal
 			if vertexEnabled {
-				return fmt.Errorf("failed to copy %s secret from %s to %s (CLAUDE_CODE_USE_VERTEX=1): %w", AmbientVertexSecretName, operatorNamespace, sessionNamespace, err)
+				return fmt.Errorf("failed to copy %s secret from %s to %s (CLAUDE_CODE_USE_VERTEX=1): %w", types.AmbientVertexSecretName, operatorNamespace, sessionNamespace, err)
 			}
 			// Otherwise just log the error
-			log.Printf("Warning: Failed to copy %s secret from %s to %s: %v", AmbientVertexSecretName, operatorNamespace, sessionNamespace, err)
+			log.Printf("Warning: Failed to copy %s secret from %s to %s: %v", types.AmbientVertexSecretName, operatorNamespace, sessionNamespace, err)
 		} else {
 			ambientVertexSecretCopied = true
-			log.Printf("Successfully copied %s secret to %s", AmbientVertexSecretName, sessionNamespace)
+			log.Printf("Successfully copied %s secret to %s", types.AmbientVertexSecretName, sessionNamespace)
 		}
 	} else if !errors.IsNotFound(err) {
-		log.Printf("Error checking for %s secret in %s: %v", AmbientVertexSecretName, operatorNamespace, err)
+		log.Printf("Error checking for %s secret in %s: %v", types.AmbientVertexSecretName, operatorNamespace, err)
 		// If Vertex is enabled and we can't even check for the secret, fail
 		if vertexEnabled {
-			return fmt.Errorf("failed to check for %s secret in %s (CLAUDE_CODE_USE_VERTEX=1): %w", AmbientVertexSecretName, operatorNamespace, err)
+			return fmt.Errorf("failed to check for %s secret in %s (CLAUDE_CODE_USE_VERTEX=1): %w", types.AmbientVertexSecretName, operatorNamespace, err)
 		}
 	} else if vertexEnabled {
 		// Vertex enabled but secret not found - fail fast
-		return fmt.Errorf("CLAUDE_CODE_USE_VERTEX=1 but %s secret not found in namespace %s", AmbientVertexSecretName, operatorNamespace)
+		return fmt.Errorf("CLAUDE_CODE_USE_VERTEX=1 but %s secret not found in namespace %s", types.AmbientVertexSecretName, operatorNamespace)
 	}
 
 	// Create a Kubernetes Job for this AgenticSession
@@ -575,7 +570,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 							EnvFrom: func() []corev1.EnvFromSource {
 								// Warn if both secrets are configured
 								if ambientVertexSecretCopied && runnerSecretsName != "" {
-									log.Printf("Warning: Both %s and runnerSecretsName configured for session %s. Using %s (runnerSecretsName ignored)", AmbientVertexSecretName, name, AmbientVertexSecretName)
+									log.Printf("Warning: Both %s and runnerSecretsName configured for session %s. Using %s (runnerSecretsName ignored)", types.AmbientVertexSecretName, name, types.AmbientVertexSecretName)
 								}
 								if !ambientVertexSecretCopied && runnerSecretsName != "" {
 									return []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: runnerSecretsName}}}}
@@ -616,7 +611,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	if ambientVertexSecretCopied {
 		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{
 			Name:         "vertex",
-			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: AmbientVertexSecretName}},
+			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: types.AmbientVertexSecretName}},
 		})
 		// Mount to the ambient-code-runner container by name
 		for i := range job.Spec.Template.Spec.Containers {
@@ -626,7 +621,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 					MountPath: "/app/vertex",
 					ReadOnly:  true,
 				})
-				log.Printf("Mounted %s secret to /app/vertex in runner container for session %s", AmbientVertexSecretName, name)
+				log.Printf("Mounted %s secret to /app/vertex in runner container for session %s", types.AmbientVertexSecretName, name)
 				break
 			}
 		}
@@ -1066,7 +1061,7 @@ func deleteJobAndPerJobService(namespace, jobName, sessionName string) error {
 
 	// Delete the ambient-vertex secret if it was copied by the operator
 	if err := deleteAmbientVertexSecret(namespace); err != nil {
-		log.Printf("Failed to delete %s secret from %s: %v", AmbientVertexSecretName, namespace, err)
+		log.Printf("Failed to delete %s secret from %s: %v", types.AmbientVertexSecretName, namespace, err)
 		// Don't return error - this is a non-critical cleanup step
 	}
 
@@ -1288,25 +1283,25 @@ func copySecretToNamespace(sourceSecret *corev1.Secret, targetNamespace string, 
 
 // deleteAmbientVertexSecret deletes the ambient-vertex secret from a namespace if it was copied
 func deleteAmbientVertexSecret(namespace string) error {
-	secret, err := config.K8sClient.CoreV1().Secrets(namespace).Get(context.TODO(), AmbientVertexSecretName, v1.GetOptions{})
+	secret, err := config.K8sClient.CoreV1().Secrets(namespace).Get(context.TODO(), types.AmbientVertexSecretName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Secret doesn't exist, nothing to do
 			return nil
 		}
-		return fmt.Errorf("error checking for %s secret: %w", AmbientVertexSecretName, err)
+		return fmt.Errorf("error checking for %s secret: %w", types.AmbientVertexSecretName, err)
 	}
 
 	// Check if this was a copied secret (has the annotation)
 	if _, ok := secret.Annotations["vteam.ambient-code/copied-from"]; !ok {
-		log.Printf("%s secret in namespace %s was not copied by operator, not deleting", AmbientVertexSecretName, namespace)
+		log.Printf("%s secret in namespace %s was not copied by operator, not deleting", types.AmbientVertexSecretName, namespace)
 		return nil
 	}
 
-	log.Printf("Deleting copied %s secret from namespace %s", AmbientVertexSecretName, namespace)
-	err = config.K8sClient.CoreV1().Secrets(namespace).Delete(context.TODO(), AmbientVertexSecretName, v1.DeleteOptions{})
+	log.Printf("Deleting copied %s secret from namespace %s", types.AmbientVertexSecretName, namespace)
+	err = config.K8sClient.CoreV1().Secrets(namespace).Delete(context.TODO(), types.AmbientVertexSecretName, v1.DeleteOptions{})
 	if err != nil && !errors.IsNotFound(err) {
-		return fmt.Errorf("failed to delete %s secret: %w", AmbientVertexSecretName, err)
+		return fmt.Errorf("failed to delete %s secret: %w", types.AmbientVertexSecretName, err)
 	}
 
 	return nil
