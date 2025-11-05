@@ -1217,7 +1217,7 @@ func copySecretToNamespace(sourceSecret *corev1.Secret, targetNamespace string, 
 			Namespace: targetNamespace,
 			Labels:    sourceSecret.Labels,
 			Annotations: map[string]string{
-				"vteam.ambient-code/copied-from": fmt.Sprintf("%s/%s", sourceSecret.Namespace, sourceSecret.Name),
+				types.CopiedFromAnnotation: fmt.Sprintf("%s/%s", sourceSecret.Namespace, sourceSecret.Name),
 			},
 			OwnerReferences: []v1.OwnerReference{
 				{
@@ -1266,7 +1266,7 @@ func copySecretToNamespace(sourceSecret *corev1.Secret, targetNamespace string, 
 			if currentSecret.Annotations == nil {
 				currentSecret.Annotations = make(map[string]string)
 			}
-			currentSecret.Annotations["vteam.ambient-code/copied-from"] = fmt.Sprintf("%s/%s", sourceSecret.Namespace, sourceSecret.Name)
+			currentSecret.Annotations[types.CopiedFromAnnotation] = fmt.Sprintf("%s/%s", sourceSecret.Namespace, sourceSecret.Name)
 
 			// Attempt update
 			_, err = config.K8sClient.CoreV1().Secrets(targetNamespace).Update(context.TODO(), currentSecret, v1.UpdateOptions{})
@@ -1293,7 +1293,7 @@ func deleteAmbientVertexSecret(namespace string) error {
 	}
 
 	// Check if this was a copied secret (has the annotation)
-	if _, ok := secret.Annotations["vteam.ambient-code/copied-from"]; !ok {
+	if _, ok := secret.Annotations[types.CopiedFromAnnotation]; !ok {
 		log.Printf("%s secret in namespace %s was not copied by operator, not deleting", types.AmbientVertexSecretName, namespace)
 		return nil
 	}
