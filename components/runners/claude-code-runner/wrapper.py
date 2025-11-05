@@ -156,11 +156,12 @@ class ClaudeCodeAdapter:
 
             # Check for authentication method: API key or service account
             api_key = self.context.get_env('ANTHROPIC_API_KEY', '')
-            use_vertex = self.context.get_env('USE_VERTEX_AI', '').strip().lower() in ('1', 'true', 'yes')
+            # Operator passes CLAUDE_CODE_USER_VERTEX from its environment
+            use_vertex = self.context.get_env('CLAUDE_CODE_USER_VERTEX', '').strip().lower() in ('1', 'true', 'yes')
 
             # Determine which authentication method to use
             if not api_key and not use_vertex:
-                raise RuntimeError("Either ANTHROPIC_API_KEY or USE_VERTEX_AI=true must be set")
+                raise RuntimeError("Either ANTHROPIC_API_KEY or CLAUDE_CODE_USER_VERTEX=true must be set")
 
             # Configure Vertex AI if requested
             vertex_credentials = None
@@ -281,10 +282,11 @@ class ClaudeCodeAdapter:
                 os.environ['ANTHROPIC_API_KEY'] = api_key
 
             # Set Vertex AI environment variables if using service account
+            # The operator already passes these, but ensure they're set for the SDK
             if use_vertex and vertex_credentials:
                 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = vertex_credentials.get('credentials_path', '')
-                os.environ['GOOGLE_CLOUD_PROJECT'] = vertex_credentials.get('project_id', '')
-                os.environ['GOOGLE_CLOUD_REGION'] = vertex_credentials.get('region', '')
+                os.environ['ANTHROPIC_VERTEX_PROJECT_ID'] = vertex_credentials.get('project_id', '')
+                os.environ['CLOUD_ML_REGION'] = vertex_credentials.get('region', '')
 
             result_payload = None
             self._turn_count = 0
@@ -459,15 +461,16 @@ class ClaudeCodeAdapter:
             RuntimeError: If required Vertex AI configuration is missing
         """
         # Get service account configuration from environment
+        # These are passed by the operator from its own environment
         service_account_path = self.context.get_env('GOOGLE_APPLICATION_CREDENTIALS', '').strip()
-        project_id = self.context.get_env('GOOGLE_CLOUD_PROJECT', '').strip()
-        region = self.context.get_env('GOOGLE_CLOUD_REGION', '').strip() or 'us-east5'
+        project_id = self.context.get_env('ANTHROPIC_VERTEX_PROJECT_ID', '').strip()
+        region = self.context.get_env('CLOUD_ML_REGION', '').strip() or 'us-east5'
 
         # Validate required fields
         if not service_account_path:
-            raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS must be set when USE_VERTEX_AI=true")
+            raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS must be set when CLAUDE_CODE_USER_VERTEX=true")
         if not project_id:
-            raise RuntimeError("GOOGLE_CLOUD_PROJECT must be set when USE_VERTEX_AI=true")
+            raise RuntimeError("ANTHROPIC_VERTEX_PROJECT_ID must be set when CLAUDE_CODE_USER_VERTEX=true")
 
         # Verify service account file exists
         if not Path(service_account_path).exists():
