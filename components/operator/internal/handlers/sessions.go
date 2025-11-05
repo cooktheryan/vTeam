@@ -1268,6 +1268,8 @@ func copySecretToNamespace(ctx context.Context, sourceSecret *corev1.Secret, tar
 			}
 
 			// Apply updates
+			// Create a new slice to avoid mutating shared/cached data
+			currentSecret.OwnerReferences = append([]v1.OwnerReference{}, currentSecret.OwnerReferences...)
 			currentSecret.OwnerReferences = append(currentSecret.OwnerReferences, newSecret.OwnerReferences[0])
 			currentSecret.Data = sourceSecret.Data
 			if currentSecret.Annotations == nil {
