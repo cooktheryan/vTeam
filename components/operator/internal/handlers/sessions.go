@@ -269,19 +269,19 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		if err := copySecretToNamespace(ambientVertexSecret, sessionNamespace, currentObj); err != nil {
 			// If Vertex AI is enabled, secret copy failure is fatal
 			if vertexEnabled {
-				return fmt.Errorf("failed to copy ambient-vertex secret (CLAUDE_CODE_USE_VERTEX=1): %w", err)
+				return fmt.Errorf("failed to copy ambient-vertex secret from %s to %s (CLAUDE_CODE_USE_VERTEX=1): %w", operatorNamespace, sessionNamespace, err)
 			}
 			// Otherwise just log the error
-			log.Printf("Warning: Failed to copy ambient-vertex secret to %s: %v", sessionNamespace, err)
+			log.Printf("Warning: Failed to copy ambient-vertex secret from %s to %s: %v", operatorNamespace, sessionNamespace, err)
 		} else {
 			ambientVertexSecretCopied = true
 			log.Printf("Successfully copied ambient-vertex secret to %s", sessionNamespace)
 		}
 	} else if !errors.IsNotFound(err) {
-		log.Printf("Error checking for ambient-vertex secret: %v", err)
+		log.Printf("Error checking for ambient-vertex secret in %s: %v", operatorNamespace, err)
 		// If Vertex is enabled and we can't even check for the secret, fail
 		if vertexEnabled {
-			return fmt.Errorf("failed to check for ambient-vertex secret (CLAUDE_CODE_USE_VERTEX=1): %w", err)
+			return fmt.Errorf("failed to check for ambient-vertex secret in %s (CLAUDE_CODE_USE_VERTEX=1): %w", operatorNamespace, err)
 		}
 	} else if vertexEnabled {
 		// Vertex enabled but secret not found - fail fast
