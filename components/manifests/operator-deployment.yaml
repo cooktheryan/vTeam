@@ -36,14 +36,27 @@ spec:
           value: "quay.io/ambient_code/vteam_backend:latest"
         - name: IMAGE_PULL_POLICY
           value: "Always"
+        # Vertex AI configuration from ConfigMap
         - name: CLAUDE_CODE_USE_VERTEX
-          value: "1"
+          valueFrom:
+            configMapKeyRef:
+              name: operator-config
+              key: CLAUDE_CODE_USE_VERTEX
         - name: CLOUD_ML_REGION
-          value: "global"
+          valueFrom:
+            configMapKeyRef:
+              name: operator-config
+              key: CLOUD_ML_REGION
         - name: ANTHROPIC_VERTEX_PROJECT_ID
-          value: "ambient-code-platform"
+          valueFrom:
+            configMapKeyRef:
+              name: operator-config
+              key: ANTHROPIC_VERTEX_PROJECT_ID
         - name: GOOGLE_APPLICATION_CREDENTIALS
-          value: "/app/vertex/ambient-code-key.json"
+          valueFrom:
+            configMapKeyRef:
+              name: operator-config
+              key: GOOGLE_APPLICATION_CREDENTIALS
         resources:
           requests:
             cpu: 50m
