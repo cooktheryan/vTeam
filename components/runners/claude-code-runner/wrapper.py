@@ -488,6 +488,8 @@ class ClaudeCodeAdapter:
             raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS must be set when CLAUDE_CODE_USE_VERTEX=1")
         if not project_id:
             raise RuntimeError("ANTHROPIC_VERTEX_PROJECT_ID must be set when CLAUDE_CODE_USE_VERTEX=1")
+        if not region:
+            raise RuntimeError("CLOUD_ML_REGION must be set when CLAUDE_CODE_USE_VERTEX=1")
 
         # Verify service account file exists
         if not Path(service_account_path).exists():
