@@ -36,7 +36,6 @@ spec:
           value: "quay.io/ambient_code/vteam_backend:latest"
         - name: IMAGE_PULL_POLICY
           value: "Always"
-        # Vertex AI Configuration - passed to runner jobs
         - name: CLAUDE_CODE_USE_VERTEX
           value: "1"
         - name: CLOUD_ML_REGION
