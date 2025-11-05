@@ -1,9 +1,7 @@
 # golangci-lint configuration for vTeam operator
-# Compatible with golangci-lint v2.x
+# Compatible with golangci-lint v2+
 #
 # Pragmatic configuration for Kubernetes operator development.
-
-version: "2"
 
 run:
   timeout: 5m
