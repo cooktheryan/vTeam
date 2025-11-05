@@ -37,7 +37,7 @@ spec:
         - name: IMAGE_PULL_POLICY
           value: "Always"
         # Vertex AI Configuration - passed to runner jobs
-        - name: CLAUDE_CODE_USER_VERTEX
+        - name: CLAUDE_CODE_USE_VERTEX
           value: "1"
         - name: CLOUD_ML_REGION
           value: "global"
