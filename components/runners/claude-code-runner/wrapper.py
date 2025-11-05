@@ -155,12 +155,16 @@ class ClaudeCodeAdapter:
             # Check for authentication method: API key or service account
             # IMPORTANT: Must check and set env vars BEFORE importing SDK
             api_key = self.context.get_env('ANTHROPIC_API_KEY', '')
-            # Operator passes CLAUDE_CODE_USER_VERTEX from its environment
-            use_vertex = self.context.get_env('CLAUDE_CODE_USER_VERTEX', '').strip().lower() in ('1', 'true', 'yes')
+            # SDK uses CLAUDE_CODE_USE_VERTEX (not CLAUDE_CODE_USER_VERTEX)
+            # Check both for backward compatibility
+            use_vertex = (
+                self.context.get_env('CLAUDE_CODE_USE_VERTEX', '').strip() == '1' or
+                self.context.get_env('CLAUDE_CODE_USER_VERTEX', '').strip().lower() in ('1', 'true', 'yes')
+            )
 
             # Determine which authentication method to use
             if not api_key and not use_vertex:
-                raise RuntimeError("Either ANTHROPIC_API_KEY or CLAUDE_CODE_USER_VERTEX=true must be set")
+                raise RuntimeError("Either ANTHROPIC_API_KEY or CLAUDE_CODE_USE_VERTEX=1 must be set")
 
             # Set environment variables BEFORE importing SDK
             # The Anthropic SDK checks these during initialization
@@ -171,13 +175,25 @@ class ClaudeCodeAdapter:
             # Configure Vertex AI if requested
             if use_vertex:
                 vertex_credentials = await self._setup_vertex_credentials()
+
                 # Clear API key if set, to force Vertex AI mode
                 if 'ANTHROPIC_API_KEY' in os.environ:
+                    logging.info("Clearing ANTHROPIC_API_KEY to force Vertex AI mode")
                     del os.environ['ANTHROPIC_API_KEY']
+
+                # Set the SDK's official Vertex AI flag
+                os.environ['CLAUDE_CODE_USE_VERTEX'] = '1'
+
+                # Set Vertex AI environment variables
                 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = vertex_credentials.get('credentials_path', '')
                 os.environ['ANTHROPIC_VERTEX_PROJECT_ID'] = vertex_credentials.get('project_id', '')
                 os.environ['CLOUD_ML_REGION'] = vertex_credentials.get('region', '')
-                logging.info(f"Using Vertex AI authentication: project={vertex_credentials.get('project_id')}, region={vertex_credentials.get('region')}")
+
+                logging.info(f"Vertex AI environment configured:")
+                logging.info(f"  CLAUDE_CODE_USE_VERTEX: {os.environ.get('CLAUDE_CODE_USE_VERTEX')}")
+                logging.info(f"  GOOGLE_APPLICATION_CREDENTIALS: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')}")
+                logging.info(f"  ANTHROPIC_VERTEX_PROJECT_ID: {os.environ.get('ANTHROPIC_VERTEX_PROJECT_ID')}")
+                logging.info(f"  CLOUD_ML_REGION: {os.environ.get('CLOUD_ML_REGION')}")
 
             # NOW we can safely import the SDK with the correct environment set
             from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
@@ -471,9 +487,9 @@ class ClaudeCodeAdapter:
 
         # Validate required fields
         if not service_account_path:
-            raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS must be set when CLAUDE_CODE_USER_VERTEX=true")
+            raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS must be set when CLAUDE_CODE_USE_VERTEX=1")
         if not project_id:
-            raise RuntimeError("ANTHROPIC_VERTEX_PROJECT_ID must be set when CLAUDE_CODE_USER_VERTEX=true")
+            raise RuntimeError("ANTHROPIC_VERTEX_PROJECT_ID must be set when CLAUDE_CODE_USE_VERTEX=1")
 
         # Verify service account file exists
         if not Path(service_account_path).exists():

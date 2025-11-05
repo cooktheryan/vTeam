@@ -464,8 +464,9 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 								// Add Vertex AI configuration from operator's environment
 								// Operator deployment should set these values (empty string if not using Vertex)
+								// CLAUDE_CODE_USE_VERTEX is the official SDK flag (not CLAUDE_CODE_USER_VERTEX)
 								base = append(base,
-									corev1.EnvVar{Name: "CLAUDE_CODE_USER_VERTEX", Value: os.Getenv("CLAUDE_CODE_USER_VERTEX")},
+									corev1.EnvVar{Name: "CLAUDE_CODE_USE_VERTEX", Value: os.Getenv("CLAUDE_CODE_USE_VERTEX")},
 									corev1.EnvVar{Name: "CLOUD_ML_REGION", Value: os.Getenv("CLOUD_ML_REGION")},
 									corev1.EnvVar{Name: "ANTHROPIC_VERTEX_PROJECT_ID", Value: os.Getenv("ANTHROPIC_VERTEX_PROJECT_ID")},
 									corev1.EnvVar{Name: "GOOGLE_APPLICATION_CREDENTIALS", Value: os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")},
