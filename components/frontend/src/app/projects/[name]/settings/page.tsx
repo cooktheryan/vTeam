@@ -363,7 +363,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
               </div>
               <div className="pt-4 space-y-3 border-t">
                 <div className="pt-3">
-                  <Label className="text-base font-semibold">Anthropic API Key (Required)</Label>
+                  <Label className="text-base font-semibold">Anthropic API Key (Optional)</Label>
                   <div className="text-xs text-muted-foreground mb-3">Your Anthropic API key for Claude Code runner</div>
                   <div className="flex items-center gap-2">
                     <Input
