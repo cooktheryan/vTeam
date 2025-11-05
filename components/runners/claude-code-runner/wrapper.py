@@ -155,8 +155,7 @@ class ClaudeCodeAdapter:
             # Check for authentication method: API key or service account
             # IMPORTANT: Must check and set env vars BEFORE importing SDK
             api_key = self.context.get_env('ANTHROPIC_API_KEY', '')
-            # SDK uses CLAUDE_CODE_USE_VERTEX (not CLAUDE_CODE_USER_VERTEX)
-            # Check both for backward compatibility
+            # SDK official flag is CLAUDE_CODE_USE_VERTEX=1
             use_vertex = (
                 self.context.get_env('CLAUDE_CODE_USE_VERTEX', '').strip() == '1'
                 )

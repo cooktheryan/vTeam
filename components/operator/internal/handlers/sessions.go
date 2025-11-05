@@ -172,7 +172,8 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 		// Also cleanup ambient-vertex secret when session is stopped
 		if err := deleteAmbientVertexSecret(sessionNamespace); err != nil {
-			log.Printf("Failed to delete ambient-vertex secret from %s: %v", sessionNamespace, err)
+			log.Printf("Warning: Failed to cleanup ambient-vertex secret from %s: %v", sessionNamespace, err)
+			// Continue - session cleanup is still successful
 		}
 
 		return nil
@@ -260,17 +261,31 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	// This will be used to conditionally mount the secret as a volume
 	ambientVertexSecretCopied := false
 	operatorNamespace := appConfig.BackendNamespace // Assuming operator runs in same namespace as backend
+	vertexEnabled := os.Getenv("CLAUDE_CODE_USE_VERTEX") == "1"
+
 	if ambientVertexSecret, err := config.K8sClient.CoreV1().Secrets(operatorNamespace).Get(context.TODO(), "ambient-vertex", v1.GetOptions{}); err == nil {
 		// Secret exists in operator namespace, copy it to the session namespace
 		log.Printf("Found ambient-vertex secret in %s, copying to %s", operatorNamespace, sessionNamespace)
 		if err := copySecretToNamespace(ambientVertexSecret, sessionNamespace, currentObj); err != nil {
-			log.Printf("Failed to copy ambient-vertex secret to %s: %v", sessionNamespace, err)
+			// If Vertex AI is enabled, secret copy failure is fatal
+			if vertexEnabled {
+				return fmt.Errorf("failed to copy ambient-vertex secret (CLAUDE_CODE_USE_VERTEX=1): %w", err)
+			}
+			// Otherwise just log the error
+			log.Printf("Warning: Failed to copy ambient-vertex secret to %s: %v", sessionNamespace, err)
 		} else {
 			ambientVertexSecretCopied = true
 			log.Printf("Successfully copied ambient-vertex secret to %s", sessionNamespace)
 		}
 	} else if !errors.IsNotFound(err) {
 		log.Printf("Error checking for ambient-vertex secret: %v", err)
+		// If Vertex is enabled and we can't even check for the secret, fail
+		if vertexEnabled {
+			return fmt.Errorf("failed to check for ambient-vertex secret (CLAUDE_CODE_USE_VERTEX=1): %w", err)
+		}
+	} else if vertexEnabled {
+		// Vertex enabled but secret not found - fail fast
+		return fmt.Errorf("CLAUDE_CODE_USE_VERTEX=1 but ambient-vertex secret not found in namespace %s", operatorNamespace)
 	}
 
 	// Create a Kubernetes Job for this AgenticSession
