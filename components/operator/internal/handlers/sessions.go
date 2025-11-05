@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	intstr "k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/util/retry"
 )
 
 // WatchAgenticSessions watches for AgenticSession custom resources and creates jobs
@@ -567,6 +568,10 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 							// If configured, import all keys from the runner Secret as environment variables
 							// Note: ambient-vertex takes precedence over runnerSecretsName
 							EnvFrom: func() []corev1.EnvFromSource {
+								// Warn if both secrets are configured
+								if ambientVertexSecretCopied && runnerSecretsName != "" {
+									log.Printf("Warning: Both ambient-vertex and runnerSecretsName configured for session %s. Using ambient-vertex (runnerSecretsName ignored)", name)
+								}
 								if !ambientVertexSecretCopied && runnerSecretsName != "" {
 									return []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: runnerSecretsName}}}}
 								}
@@ -1240,16 +1245,26 @@ func copySecretToNamespace(sourceSecret *corev1.Secret, targetNamespace string, 
 			return nil
 		}
 
-		// Update the secret with owner reference
-		existingSecret.OwnerReferences = append(existingSecret.OwnerReferences, newSecret.OwnerReferences[0])
-		existingSecret.Data = sourceSecret.Data
-		if existingSecret.Annotations == nil {
-			existingSecret.Annotations = make(map[string]string)
-		}
-		existingSecret.Annotations["vteam.ambient-code/copied-from"] = fmt.Sprintf("%s/%s", sourceSecret.Namespace, sourceSecret.Name)
+		// Update the secret with owner reference using retry logic to handle race conditions
+		return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			// Re-fetch the secret to get the latest version
+			currentSecret, err := config.K8sClient.CoreV1().Secrets(targetNamespace).Get(context.TODO(), sourceSecret.Name, v1.GetOptions{})
+			if err != nil {
+				return err
+			}
 
-		_, err = config.K8sClient.CoreV1().Secrets(targetNamespace).Update(context.TODO(), existingSecret, v1.UpdateOptions{})
-		return err
+			// Apply updates
+			currentSecret.OwnerReferences = append(currentSecret.OwnerReferences, newSecret.OwnerReferences[0])
+			currentSecret.Data = sourceSecret.Data
+			if currentSecret.Annotations == nil {
+				currentSecret.Annotations = make(map[string]string)
+			}
+			currentSecret.Annotations["vteam.ambient-code/copied-from"] = fmt.Sprintf("%s/%s", sourceSecret.Namespace, sourceSecret.Name)
+
+			// Attempt update
+			_, err = config.K8sClient.CoreV1().Secrets(targetNamespace).Update(context.TODO(), currentSecret, v1.UpdateOptions{})
+			return err
+		})
 	} else if !errors.IsNotFound(err) {
 		return fmt.Errorf("error checking for existing secret: %w", err)
 	}
