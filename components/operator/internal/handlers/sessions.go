@@ -260,38 +260,33 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	// Load config for this session
 	appConfig := config.LoadConfig()
 
-	// Check for ambient-vertex secret in the operator's namespace and copy it if it exists
+	// Check for ambient-vertex secret in the operator's namespace and copy it if Vertex is enabled
 	// This will be used to conditionally mount the secret as a volume
 	ambientVertexSecretCopied := false
 	operatorNamespace := appConfig.BackendNamespace // Assuming operator runs in same namespace as backend
 	vertexEnabled := os.Getenv("CLAUDE_CODE_USE_VERTEX") == "1"
 
-	if ambientVertexSecret, err := config.K8sClient.CoreV1().Secrets(operatorNamespace).Get(context.TODO(), types.AmbientVertexSecretName, v1.GetOptions{}); err == nil {
-		// Secret exists in operator namespace, copy it to the session namespace
-		log.Printf("Found %s secret in %s, copying to %s", types.AmbientVertexSecretName, operatorNamespace, sessionNamespace)
-		// Create context with timeout for secret copy operation
-		copyCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := copySecretToNamespace(copyCtx, ambientVertexSecret, sessionNamespace, currentObj); err != nil {
-			// If Vertex AI is enabled, secret copy failure is fatal
-			if vertexEnabled {
+	// Only attempt to copy the secret if Vertex AI is enabled
+	if vertexEnabled {
+		if ambientVertexSecret, err := config.K8sClient.CoreV1().Secrets(operatorNamespace).Get(context.TODO(), types.AmbientVertexSecretName, v1.GetOptions{}); err == nil {
+			// Secret exists in operator namespace, copy it to the session namespace
+			log.Printf("Found %s secret in %s, copying to %s", types.AmbientVertexSecretName, operatorNamespace, sessionNamespace)
+			// Create context with timeout for secret copy operation
+			copyCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := copySecretToNamespace(copyCtx, ambientVertexSecret, sessionNamespace, currentObj); err != nil {
 				return fmt.Errorf("failed to copy %s secret from %s to %s (CLAUDE_CODE_USE_VERTEX=1): %w", types.AmbientVertexSecretName, operatorNamespace, sessionNamespace, err)
 			}
-			// Otherwise just log the error
-			log.Printf("Warning: Failed to copy %s secret from %s to %s: %v", types.AmbientVertexSecretName, operatorNamespace, sessionNamespace, err)
-		} else {
 			ambientVertexSecretCopied = true
 			log.Printf("Successfully copied %s secret to %s", types.AmbientVertexSecretName, sessionNamespace)
-		}
-	} else if !errors.IsNotFound(err) {
-		log.Printf("Error checking for %s secret in %s: %v", types.AmbientVertexSecretName, operatorNamespace, err)
-		// If Vertex is enabled and we can't even check for the secret, fail
-		if vertexEnabled {
+		} else if !errors.IsNotFound(err) {
 			return fmt.Errorf("failed to check for %s secret in %s (CLAUDE_CODE_USE_VERTEX=1): %w", types.AmbientVertexSecretName, operatorNamespace, err)
+		} else {
+			// Vertex enabled but secret not found - fail fast
+			return fmt.Errorf("CLAUDE_CODE_USE_VERTEX=1 but %s secret not found in namespace %s", types.AmbientVertexSecretName, operatorNamespace)
 		}
-	} else if vertexEnabled {
-		// Vertex enabled but secret not found - fail fast
-		return fmt.Errorf("CLAUDE_CODE_USE_VERTEX=1 but %s secret not found in namespace %s", types.AmbientVertexSecretName, operatorNamespace)
+	} else {
+		log.Printf("Vertex AI disabled (CLAUDE_CODE_USE_VERTEX=0), skipping %s secret copy", types.AmbientVertexSecretName)
 	}
 
 	// Create a Kubernetes Job for this AgenticSession
@@ -483,14 +478,18 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									// S3 disabled; backend persists messages
 								}
 
-								// Add Vertex AI configuration from operator's environment
-								// Operator deployment should set these values (empty string if not using Vertex)
-								base = append(base,
-									corev1.EnvVar{Name: "CLAUDE_CODE_USE_VERTEX", Value: os.Getenv("CLAUDE_CODE_USE_VERTEX")},
-									corev1.EnvVar{Name: "CLOUD_ML_REGION", Value: os.Getenv("CLOUD_ML_REGION")},
-									corev1.EnvVar{Name: "ANTHROPIC_VERTEX_PROJECT_ID", Value: os.Getenv("ANTHROPIC_VERTEX_PROJECT_ID")},
-									corev1.EnvVar{Name: "GOOGLE_APPLICATION_CREDENTIALS", Value: os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")},
-								)
+								// Add Vertex AI configuration only if enabled
+								if vertexEnabled {
+									base = append(base,
+										corev1.EnvVar{Name: "CLAUDE_CODE_USE_VERTEX", Value: "1"},
+										corev1.EnvVar{Name: "CLOUD_ML_REGION", Value: os.Getenv("CLOUD_ML_REGION")},
+										corev1.EnvVar{Name: "ANTHROPIC_VERTEX_PROJECT_ID", Value: os.Getenv("ANTHROPIC_VERTEX_PROJECT_ID")},
+										corev1.EnvVar{Name: "GOOGLE_APPLICATION_CREDENTIALS", Value: os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")},
+									)
+								} else {
+									// Explicitly set to 0 when Vertex is disabled
+									base = append(base, corev1.EnvVar{Name: "CLAUDE_CODE_USE_VERTEX", Value: "0"})
+								}
 
 								// Add PARENT_SESSION_ID if this is a continuation
 								if parentSessionID != "" {
@@ -571,13 +570,14 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 							}(),
 
 							// If configured, import all keys from the runner Secret as environment variables
-							// Note: ambient-vertex takes precedence over runnerSecretsName
+							// Note: When Vertex is enabled, use ambient-vertex secret instead of runnerSecretsName
 							EnvFrom: func() []corev1.EnvFromSource {
-								// Warn if both secrets are configured
-								if ambientVertexSecretCopied && runnerSecretsName != "" {
-									log.Printf("Warning: Both %s and runnerSecretsName configured for session %s. Using %s (runnerSecretsName ignored)", types.AmbientVertexSecretName, name, types.AmbientVertexSecretName)
+								// Warn if both Vertex and runnerSecretsName are configured
+								if vertexEnabled && runnerSecretsName != "" {
+									log.Printf("Warning: Both Vertex AI and runnerSecretsName configured for session %s. Using Vertex (runnerSecretsName ignored)", name)
 								}
-								if !ambientVertexSecretCopied && runnerSecretsName != "" {
+								// Only use runnerSecretsName when Vertex is disabled
+								if !vertexEnabled && runnerSecretsName != "" {
 									return []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: runnerSecretsName}}}}
 								}
 								return []corev1.EnvFromSource{}
@@ -592,8 +592,8 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	}
 
 	// If a runner secret is configured, mount it as a volume in addition to EnvFrom
-	// Only use runnerSecretsName if ambient-vertex is NOT being used (mutually exclusive)
-	if !ambientVertexSecretCopied && strings.TrimSpace(runnerSecretsName) != "" {
+	// Only use runnerSecretsName when Vertex AI is disabled (mutually exclusive with Vertex)
+	if !vertexEnabled && strings.TrimSpace(runnerSecretsName) != "" {
 		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{
 			Name:         "runner-secrets",
 			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: runnerSecretsName}},
