@@ -13,7 +13,7 @@ import (
 
 // Package-level variables (exported for use by handlers and services)
 var (
-	K8sClient     *kubernetes.Clientset
+	K8sClient     kubernetes.Interface
 	DynamicClient dynamic.Interface
 )
 
