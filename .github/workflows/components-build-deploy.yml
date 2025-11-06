@@ -141,6 +141,7 @@ jobs:
         run: |
           oc apply -k components/manifests/crds/
           oc apply -k components/manifests/rbac/
+          oc apply -k components/manifests/operator-config-openshift.yaml
 
   deploy-to-openshift:
     runs-on: ubuntu-latest
