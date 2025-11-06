@@ -2,14 +2,12 @@ package preflight
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 
 	"ambient-code-operator/internal/config"
 	"ambient-code-operator/internal/types"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -31,68 +29,23 @@ func ValidateVertexConfig(operatorNamespace string) error {
 		log.Printf("  %s: %s", name, value)
 	}
 
-	// Check that ambient-vertex secret exists in operator namespace
-	secret, err := config.K8sClient.CoreV1().Secrets(operatorNamespace).Get(
+	// Optional: Check if ambient-vertex secret exists in operator namespace
+	// The secret will be copied to runner namespaces, but it's not required at operator startup
+	// since runners handle the actual authentication
+	_, err := config.K8sClient.CoreV1().Secrets(operatorNamespace).Get(
 		context.TODO(),
 		types.AmbientVertexSecretName,
 		metav1.GetOptions{},
 	)
 	if err != nil {
-		return fmt.Errorf("secret '%s' not found in namespace '%s': %w\n"+
-			"Please create the secret with: kubectl create secret generic %s --from-file=key.json=/path/to/service-account.json -n %s",
-			types.AmbientVertexSecretName, operatorNamespace, err, types.AmbientVertexSecretName, operatorNamespace)
+		log.Printf("  Warning: secret '%s' not found in namespace '%s': %v", types.AmbientVertexSecretName, operatorNamespace, err)
+		log.Printf("  Note: Create the secret with: kubectl create secret generic %s --from-file=ambient-code-key.json=/path/to/service-account.json -n %s",
+			types.AmbientVertexSecretName, operatorNamespace)
+		log.Printf("  The operator will continue, but sessions requiring Vertex AI will fail until the secret is created")
+	} else {
+		log.Printf("  Secret '%s' found in namespace '%s'", types.AmbientVertexSecretName, operatorNamespace)
 	}
-	log.Printf("  Secret '%s' found in namespace '%s'", types.AmbientVertexSecretName, operatorNamespace)
-
-	// Validate secret structure
-	if err := validateVertexSecret(secret, os.Getenv("ANTHROPIC_VERTEX_PROJECT_ID")); err != nil {
-		return fmt.Errorf("secret '%s' is invalid: %w", types.AmbientVertexSecretName, err)
-	}
-	log.Printf("  Secret structure validated")
 
 	log.Printf("Vertex AI configuration validated successfully")
-	return nil
-}
-
-// validateVertexSecret validates the structure of a Vertex AI secret
-func validateVertexSecret(secret *corev1.Secret, expectedProjectID string) error {
-	if secret == nil {
-		return fmt.Errorf("secret is nil")
-	}
-
-	// Check for key.json (standard naming)
-	if secret.Data["key.json"] == nil {
-		return fmt.Errorf("secret missing 'key.json' key - ensure secret was created with --from-file=key.json=/path/to/file")
-	}
-
-	// Validate it's valid JSON
-	var data map[string]any
-	if err := json.Unmarshal(secret.Data["key.json"], &data); err != nil {
-		return fmt.Errorf("'key.json' is not valid JSON: %w", err)
-	}
-
-	// Validate it looks like a Google service account JSON
-	requiredFields := []string{"type", "project_id", "private_key", "client_email"}
-	for _, field := range requiredFields {
-		if _, ok := data[field]; !ok {
-			return fmt.Errorf("'key.json' missing required field '%s' - doesn't appear to be a valid service account key", field)
-		}
-	}
-
-	// Validate type is service_account
-	if typeVal, ok := data["type"].(string); !ok || typeVal != "service_account" {
-		return fmt.Errorf("'key.json' type is '%v', expected 'service_account'", data["type"])
-	}
-
-	// Validate project_id matches configured value (if provided)
-	if expectedProjectID != "" {
-		if projectID, ok := data["project_id"].(string); ok {
-			if projectID != expectedProjectID {
-				log.Printf("  Warning: Service account project_id '%s' differs from ANTHROPIC_VERTEX_PROJECT_ID '%s'", projectID, expectedProjectID)
-				log.Printf("  Warning: This may cause authentication failures if the service account is from a different project")
-			}
-		}
-	}
-
 	return nil
 }
