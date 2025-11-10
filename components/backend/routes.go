@@ -22,6 +22,7 @@ func registerRoutes(r *gin.Engine, jiraHandler *jira.Handler) {
 	api := r.Group("/api")
 	{
 		api.POST("/projects/:projectName/agentic-sessions/:sessionName/github/token", handlers.MintSessionGitHubToken)
+		api.POST("/projects/:projectName/agentic-sessions/:sessionName/vertex/credentials", handlers.MintSessionVertexCredentials)
 
 		projectGroup := api.Group("/projects/:projectName", handlers.ValidateProjectContext())
 		{

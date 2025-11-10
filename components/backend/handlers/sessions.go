@@ -881,6 +881,111 @@ func MintSessionGitHubToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": tokenStr})
 }
 
+// MintSessionVertexCredentials validates the token via TokenReview, ensures SA matches CR annotation, and returns Vertex AI credentials.
+// POST /api/projects/:projectName/agentic-sessions/:sessionName/vertex/credentials
+// Auth: Authorization: Bearer <BOT_TOKEN> (K8s SA token with audience "ambient-backend")
+func MintSessionVertexCredentials(c *gin.Context) {
+	project := c.Param("projectName")
+	sessionName := c.Param("sessionName")
+
+	rawAuth := strings.TrimSpace(c.GetHeader("Authorization"))
+	if rawAuth == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing Authorization header"})
+		return
+	}
+	parts := strings.SplitN(rawAuth, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid Authorization header"})
+		return
+	}
+	token := strings.TrimSpace(parts[1])
+	if token == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "empty token"})
+		return
+	}
+
+	// TokenReview using default audience (works with standard SA tokens)
+	tr := &authnv1.TokenReview{Spec: authnv1.TokenReviewSpec{Token: token}}
+	rv, err := K8sClient.AuthenticationV1().TokenReviews().Create(c.Request.Context(), tr, v1.CreateOptions{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "token review failed"})
+		return
+	}
+	if rv.Status.Error != "" || !rv.Status.Authenticated {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
+		return
+	}
+	subj := strings.TrimSpace(rv.Status.User.Username)
+	const pfx = "system:serviceaccount:"
+	if !strings.HasPrefix(subj, pfx) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "subject is not a service account"})
+		return
+	}
+	rest := strings.TrimPrefix(subj, pfx)
+	segs := strings.SplitN(rest, ":", 2)
+	if len(segs) != 2 {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid service account subject"})
+		return
+	}
+	nsFromToken, saFromToken := segs[0], segs[1]
+	if nsFromToken != project {
+		c.JSON(http.StatusForbidden, gin.H{"error": "namespace mismatch"})
+		return
+	}
+
+	// Load session and verify SA matches annotation
+	gvr := GetAgenticSessionV1Alpha1Resource()
+	obj, err := DynamicClient.Resource(gvr).Namespace(project).Get(c.Request.Context(), sessionName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read session"})
+		return
+	}
+	meta, _ := obj.Object["metadata"].(map[string]interface{})
+	anns, _ := meta["annotations"].(map[string]interface{})
+	expectedSA := ""
+	if anns != nil {
+		if v, ok := anns["ambient-code.io/runner-sa"].(string); ok {
+			expectedSA = strings.TrimSpace(v)
+		}
+	}
+	if expectedSA == "" || expectedSA != saFromToken {
+		c.JSON(http.StatusForbidden, gin.H{"error": "service account not authorized for session"})
+		return
+	}
+
+	// Load Vertex credentials from ambient-vertex secret in the project namespace
+	vertexSecretName := "ambient-vertex"
+	vertexSecret, err := K8sClient.CoreV1().Secrets(project).Get(c.Request.Context(), vertexSecretName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Vertex credentials not configured for this project"})
+			return
+		}
+		log.Printf("Failed to load Vertex secret for project %s: %v", project, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load Vertex credentials"})
+		return
+	}
+
+	// Extract the GCP service account JSON from the secret
+	credJSON, ok := vertexSecret.Data["ambient-code-key.json"]
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Vertex credentials missing ambient-code-key.json"})
+		return
+	}
+
+	// Return the credentials as JSON
+	// Runner will write this to a temp file and set GOOGLE_APPLICATION_CREDENTIALS
+	c.JSON(http.StatusOK, gin.H{
+		"credentials": string(credJSON),
+		"projectId":   string(vertexSecret.Data["project-id"]),
+		"region":      string(vertexSecret.Data["region"]),
+	})
+}
+
 func PatchSession(c *gin.Context) {
 	project := c.GetString("project")
 	sessionName := c.Param("sessionName")

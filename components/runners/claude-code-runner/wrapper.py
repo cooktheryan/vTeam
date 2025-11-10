@@ -469,7 +469,10 @@ class ClaudeCodeAdapter:
             }
 
     async def _setup_vertex_credentials(self) -> dict:
-        """Set up Google Cloud Vertex AI credentials from service account.
+        """Set up Google Cloud Vertex AI credentials from backend service.
+
+        Fetches credentials from backend API and writes them to a temporary file.
+        This prevents credentials from being accessible via the filesystem to user scripts.
 
         Returns:
             dict with 'credentials_path', 'project_id', and 'region'
@@ -477,29 +480,41 @@ class ClaudeCodeAdapter:
         Raises:
             RuntimeError: If required Vertex AI configuration is missing
         """
-        # Get service account configuration from environment
-        # These are passed by the operator from its own environment
-        service_account_path = self.context.get_env('GOOGLE_APPLICATION_CREDENTIALS', '').strip()
-        project_id = self.context.get_env('ANTHROPIC_VERTEX_PROJECT_ID', '').strip()
-        region = self.context.get_env('CLOUD_ML_REGION', '').strip()
+        # Fetch credentials from backend endpoint
+        vertex_creds = await self._fetch_vertex_credentials()
+
+        if not vertex_creds:
+            raise RuntimeError("Failed to fetch Vertex AI credentials from backend")
+
+        credentials_json = vertex_creds.get('credentials', '')
+        project_id = vertex_creds.get('projectId', '').strip()
+        region = vertex_creds.get('region', '').strip()
 
         # Validate required fields
-        if not service_account_path:
-            raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS must be set when CLAUDE_CODE_USE_VERTEX=1")
+        if not credentials_json:
+            raise RuntimeError("Backend returned empty credentials")
         if not project_id:
-            raise RuntimeError("ANTHROPIC_VERTEX_PROJECT_ID must be set when CLAUDE_CODE_USE_VERTEX=1")
+            raise RuntimeError("Backend returned empty project_id")
         if not region:
-            raise RuntimeError("CLOUD_ML_REGION must be set when CLAUDE_CODE_USE_VERTEX=1")
+            raise RuntimeError("Backend returned empty region")
 
-        # Verify service account file exists
-        if not Path(service_account_path).exists():
-            raise RuntimeError(f"Service account key file not found at {service_account_path}")
+        # Write credentials to a temporary file
+        # Use /tmp which is mounted as tmpfs (in-memory filesystem)
+        creds_path = '/tmp/vertex-credentials.json'
+        try:
+            with open(creds_path, 'w') as f:
+                f.write(credentials_json)
+            # Set restrictive permissions (owner read-only)
+            os.chmod(creds_path, 0o400)
+            logging.info(f"Vertex credentials written to {creds_path} with mode 0o400")
+        except Exception as e:
+            raise RuntimeError(f"Failed to write Vertex credentials to temp file: {e}")
 
         logging.info(f"Vertex AI configured: project={project_id}, region={region}")
         await self._send_log(f"Using Vertex AI with project {project_id} in {region}")
 
         return {
-            'credentials_path': service_account_path,
+            'credentials_path': creds_path,
             'project_id': project_id,
             'region': region,
         }
@@ -1303,6 +1318,80 @@ class ClaudeCodeAdapter:
         except Exception as e:
             logging.error(f"Failed to parse token response: {e}")
             return ""
+
+    async def _fetch_vertex_credentials(self) -> dict:
+        """Fetch Vertex AI credentials from backend API.
+
+        Returns:
+            dict with 'credentials' (JSON string), 'projectId', and 'region'
+            Empty dict on failure
+        """
+        # Build credentials URL from status URL
+        status_url = self._compute_status_url()
+        if not status_url:
+            logging.error("Cannot fetch Vertex credentials: status URL not available")
+            return {}
+
+        try:
+            from urllib.parse import urlparse as _up, urlunparse as _uu
+            p = _up(status_url)
+            new_path = p.path.rstrip("/")
+            if new_path.endswith("/status"):
+                new_path = new_path[:-7] + "/vertex/credentials"
+            else:
+                new_path = new_path + "/vertex/credentials"
+            url = _uu((p.scheme, p.netloc, new_path, '', '', ''))
+            logging.info(f"Fetching Vertex credentials from: {url}")
+        except Exception as e:
+            logging.error(f"Failed to construct Vertex credentials URL: {e}")
+            return {}
+
+        req = _urllib_request.Request(url, data=b"{}", headers={'Content-Type': 'application/json'}, method='POST')
+        bot = (os.getenv('BOT_TOKEN') or '').strip()
+        if bot:
+            req.add_header('Authorization', f'Bearer {bot}')
+            logging.debug("Using BOT_TOKEN for Vertex credential authentication")
+        else:
+            logging.error("No BOT_TOKEN available for Vertex credential fetch")
+            return {}
+
+        loop = asyncio.get_event_loop()
+        def _do_req():
+            try:
+                with _urllib_request.urlopen(req, timeout=10) as resp:
+                    return resp.read().decode('utf-8', errors='replace')
+            except _urllib_error.HTTPError as he:
+                err_body = he.read().decode('utf-8', errors='replace')
+                logging.error(f"Vertex credentials fetch HTTP {he.code}: {err_body}")
+                return ''
+            except Exception as e:
+                logging.error(f"Vertex credentials fetch failed: {e}")
+                return ''
+
+        resp_text = await loop.run_in_executor(None, _do_req)
+        if not resp_text:
+            logging.error("Empty response from Vertex credentials endpoint")
+            return {}
+
+        try:
+            data = _json.loads(resp_text)
+            credentials = data.get('credentials', '')
+            project_id = data.get('projectId', '')
+            region = data.get('region', '')
+
+            if credentials and project_id and region:
+                logging.info("Successfully fetched Vertex credentials from backend")
+                return {
+                    'credentials': credentials,
+                    'projectId': project_id,
+                    'region': region
+                }
+            else:
+                logging.error(f"Incomplete Vertex credentials response: credentials={bool(credentials)}, projectId={bool(project_id)}, region={bool(region)}")
+                return {}
+        except Exception as e:
+            logging.error(f"Failed to parse Vertex credentials response: {e}")
+            return {}
 
     async def _send_partial_output(self, output_chunk: str, *, stream_id: str, index: int):
         """Send partial assistant output using MESSAGE_PARTIAL with PartialInfo."""
