@@ -48,4 +48,3 @@ rules:
 - apiGroups: ["rbac.authorization.k8s.io"]
   resources: ["rolebindings"]
   verbs: ["get", "create"]
-# Note: Operator no longer needs secret permissions - backend serves credentials via API
