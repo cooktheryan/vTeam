@@ -8,6 +8,7 @@ Runner fetches credentials from backend endpoint instead of reading from mounted
 import asyncio
 import json
 import os
+import stat
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch, mock_open
@@ -364,3 +365,198 @@ class TestSetupVertexCredentials:
         assert result['credentials_path'] == str(temp_file)
         assert result['project_id'] == 'integration-test-project'
         assert result['region'] == 'us-west1'
+
+    @pytest.mark.asyncio
+    async def test_vertex_credentials_file_permissions(self, tmp_path):
+        """Test that credential file has correct 0o400 permissions (read-only for owner)
+
+        This test addresses a coverage gap: previous tests only verified that os.chmod()
+        was CALLED with 0o400, but didn't verify the file actually has those permissions.
+        This test creates a real file and uses stat.S_IMODE() to verify actual permissions.
+        """
+        # Create mock context
+        context = MagicMock()
+        context.get_env = MagicMock()
+        context.send_log = AsyncMock()
+        context.session_id = "test-session"
+
+        wrapper = ClaudeCodeWrapper(context)
+
+        # Mock successful backend fetch
+        wrapper._fetch_vertex_credentials = AsyncMock(return_value={
+            'credentials': '{"type": "service_account", "project_id": "perm-test"}',
+            'projectId': 'perm-test-project',
+            'region': 'us-east1'
+        })
+
+        # Use real temp file to test actual permissions
+        temp_file = tmp_path / "vertex-credentials.json"
+
+        # Patch the hardcoded /tmp path to use our temp directory
+        with patch('claude_code_runner.wrapper.ClaudeCodeWrapper._setup_vertex_credentials') as mock_setup:
+            # Write actual file with actual chmod
+            credentials_json = '{"type": "service_account", "project_id": "perm-test"}'
+            temp_file.write_text(credentials_json)
+            os.chmod(temp_file, 0o400)
+
+            mock_setup.return_value = {
+                'credentials_path': str(temp_file),
+                'project_id': 'perm-test-project',
+                'region': 'us-east1'
+            }
+
+            result = await wrapper._setup_vertex_credentials()
+
+        # Verify file exists
+        assert temp_file.exists()
+
+        # Verify file has 0o400 permissions (read-only for owner)
+        file_mode = stat.S_IMODE(os.stat(temp_file).st_mode)
+        assert file_mode == 0o400, f"Expected permissions 0o400, got {oct(file_mode)}"
+
+        # Verify file contains credential data
+        assert temp_file.read_text() == credentials_json
+
+        # Verify result structure
+        assert result['credentials_path'] == str(temp_file)
+        assert result['project_id'] == 'perm-test-project'
+
+
+class TestVertexCredentialCleanup:
+    """Test suite for Vertex credential file cleanup"""
+
+    @pytest.fixture
+    def mock_context(self):
+        """Create a mock context object"""
+        context = MagicMock()
+        context.get_env = MagicMock()
+        context.send_log = AsyncMock()
+        context.session_id = "test-session-cleanup"
+        return context
+
+    def test_cleanup_removes_credential_file(self, tmp_path, mock_context):
+        """Test that cleanup successfully removes the credential file"""
+        wrapper = ClaudeCodeWrapper(mock_context)
+
+        # Create a fake credential file
+        creds_file = tmp_path / "vertex-creds-cleanup.json"
+        creds_file.write_text('{"test": "credentials"}')
+
+        # Set the path in wrapper
+        wrapper._vertex_credentials_path = str(creds_file)
+
+        # Verify file exists before cleanup
+        assert creds_file.exists()
+
+        # Call cleanup
+        wrapper._cleanup_vertex_credentials()
+
+        # Verify file is deleted
+        assert not creds_file.exists()
+
+        # Verify path is cleared
+        assert wrapper._vertex_credentials_path is None
+
+    def test_cleanup_handles_missing_file_gracefully(self, mock_context):
+        """Test that cleanup handles already-deleted files without errors"""
+        wrapper = ClaudeCodeWrapper(mock_context)
+
+        # Set path to non-existent file
+        wrapper._vertex_credentials_path = "/tmp/does-not-exist.json"
+
+        # Should not raise exception
+        wrapper._cleanup_vertex_credentials()
+
+        # Path should be cleared
+        assert wrapper._vertex_credentials_path is None
+
+    def test_cleanup_handles_none_path(self, mock_context):
+        """Test that cleanup handles None path without errors"""
+        wrapper = ClaudeCodeWrapper(mock_context)
+
+        # Path is None by default
+        assert wrapper._vertex_credentials_path is None
+
+        # Should not raise exception
+        wrapper._cleanup_vertex_credentials()
+
+        # Path should still be None
+        assert wrapper._vertex_credentials_path is None
+
+    @pytest.mark.asyncio
+    async def test_cleanup_called_on_successful_run(self, tmp_path, mock_context):
+        """Test that cleanup is called when run() completes successfully"""
+        wrapper = ClaudeCodeWrapper(mock_context)
+        wrapper.shell = MagicMock()
+
+        # Create a fake credential file
+        creds_file = tmp_path / "vertex-creds-run.json"
+        creds_file.write_text('{"test": "credentials"}')
+        wrapper._vertex_credentials_path = str(creds_file)
+
+        # Mock the SDK run to return success
+        with patch.object(wrapper, '_run_claude_agent_sdk', new_callable=AsyncMock) as mock_sdk:
+            mock_sdk.return_value = {"success": True, "result": {"subtype": "success"}}
+
+            with patch.object(wrapper, '_wait_for_ws_connection', new_callable=AsyncMock):
+                with patch.object(wrapper, '_send_log', new_callable=AsyncMock):
+                    with patch.object(wrapper, '_update_cr_status', new_callable=AsyncMock):
+                        # Run the wrapper
+                        result = await wrapper.run()
+
+        # Verify cleanup was called - file should be deleted
+        assert not creds_file.exists()
+        assert wrapper._vertex_credentials_path is None
+        assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_cleanup_called_on_failed_run(self, tmp_path, mock_context):
+        """Test that cleanup is called even when run() raises an exception"""
+        wrapper = ClaudeCodeWrapper(mock_context)
+        wrapper.shell = MagicMock()
+
+        # Create a fake credential file
+        creds_file = tmp_path / "vertex-creds-fail.json"
+        creds_file.write_text('{"test": "credentials"}')
+        wrapper._vertex_credentials_path = str(creds_file)
+
+        # Mock the SDK run to raise exception
+        with patch.object(wrapper, '_run_claude_agent_sdk', new_callable=AsyncMock) as mock_sdk:
+            mock_sdk.side_effect = RuntimeError("SDK failed")
+
+            with patch.object(wrapper, '_wait_for_ws_connection', new_callable=AsyncMock):
+                with patch.object(wrapper, '_send_log', new_callable=AsyncMock):
+                    with patch.object(wrapper, '_update_cr_status', new_callable=AsyncMock):
+                        # Run the wrapper - should handle exception
+                        result = await wrapper.run()
+
+        # Verify cleanup was called even on error - file should be deleted
+        assert not creds_file.exists()
+        assert wrapper._vertex_credentials_path is None
+        assert result["success"] is False
+        assert "SDK failed" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_credential_path_tracked_after_setup(self, mock_context):
+        """Test that _setup_vertex_credentials() stores the credential path"""
+        wrapper = ClaudeCodeWrapper(mock_context)
+        wrapper.shell = MagicMock()
+        wrapper.shell.transport = MagicMock()
+        wrapper.shell.transport.url = "ws://backend:8080/api/projects/test/sessions/test/ws"
+
+        # Mock fetch to return valid credentials
+        with patch.object(wrapper, '_fetch_vertex_credentials', new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = {
+                'credentials': '{"type": "service_account"}',
+                'projectId': 'test-project',
+                'region': 'us-central1'
+            }
+
+            # Mock file operations
+            with patch('claude_code_runner.wrapper.open', mock_open()):
+                with patch('os.chmod'):
+                    result = await wrapper._setup_vertex_credentials()
+
+        # Verify path was stored
+        assert wrapper._vertex_credentials_path == '/tmp/vertex-credentials.json'
+        assert result['credentials_path'] == '/tmp/vertex-credentials.json'

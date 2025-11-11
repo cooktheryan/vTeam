@@ -33,6 +33,7 @@ class ClaudeCodeAdapter:
         self._incoming_queue: "asyncio.Queue[dict]" = asyncio.Queue()
         self._restart_requested = False
         self._first_run = True  # Track if this is the first SDK run or a mid-session restart
+        self._vertex_credentials_path = None  # Track Vertex credential file for cleanup
 
     async def initialize(self, context: RunnerContext):
         """Initialize the adapter with context."""
@@ -147,6 +148,9 @@ class ClaudeCodeAdapter:
             except Exception as e:
                 logging.error(f"CR status update exception: {e}")
 
+            # Clean up Vertex credentials before exit
+            self._cleanup_vertex_credentials()
+
             return result
 
         except Exception as e:
@@ -162,6 +166,10 @@ class ClaudeCodeAdapter:
                 })
             except Exception:
                 logging.debug("CR status update (Failed) skipped")
+
+            # Clean up Vertex credentials before exit (even on error)
+            self._cleanup_vertex_credentials()
+
             return {
                 "success": False,
                 "error": str(e)
@@ -672,11 +680,29 @@ class ClaudeCodeAdapter:
         logging.info(f"Vertex AI configured: project={project_id}, region={region}")
         await self._send_log(f"Using Vertex AI with project {project_id} in {region}")
 
+        # Track credential path for cleanup
+        self._vertex_credentials_path = creds_path
+
         return {
             'credentials_path': creds_path,
             'project_id': project_id,
             'region': region,
         }
+
+    def _cleanup_vertex_credentials(self):
+        """Clean up Vertex AI credential file from /tmp.
+
+        Removes the temporary credential file created by _setup_vertex_credentials()
+        to prevent credential leakage after session completion.
+        """
+        if self._vertex_credentials_path and os.path.exists(self._vertex_credentials_path):
+            try:
+                os.remove(self._vertex_credentials_path)
+                logging.info(f"Cleaned up Vertex credential file: {self._vertex_credentials_path}")
+            except Exception as e:
+                logging.warning(f"Failed to clean up Vertex credential file {self._vertex_credentials_path}: {e}")
+            finally:
+                self._vertex_credentials_path = None
 
     async def _prepare_workspace(self):
         """Clone input repo/branch into workspace and configure git remotes."""
@@ -1479,7 +1505,7 @@ class ClaudeCodeAdapter:
         while True:
             elapsed = asyncio.get_event_loop().time() - start_time
             if elapsed > timeout_seconds:
-                logging.error(f"WebSocket connection not established after {timeout_seconds}s - proceeding anyway")
+                logging.warning(f"WebSocket connection not established after {timeout_seconds}s - proceeding anyway")
                 return
 
             try:

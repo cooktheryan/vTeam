@@ -1179,7 +1179,6 @@ func CleanupExpiredTempContentPods() {
 	}
 }
 
-
 // Helper functions
 var (
 	boolPtr  = func(b bool) *bool { return &b }

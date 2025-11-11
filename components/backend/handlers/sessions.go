@@ -770,6 +770,7 @@ func MintSessionGitHubToken(c *gin.Context) {
 	tr := &authnv1.TokenReview{Spec: authnv1.TokenReviewSpec{Token: token}}
 	rv, err := K8sClient.AuthenticationV1().TokenReviews().Create(c.Request.Context(), tr, v1.CreateOptions{})
 	if err != nil {
+		log.Printf("TokenReview failed for project=%s, session=%s: %v", project, sessionName, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "token review failed"})
 		return
 	}
@@ -803,16 +804,18 @@ func MintSessionGitHubToken(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
 			return
 		}
+		log.Printf("Failed to get session %s/%s: %v", project, sessionName, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read session"})
 		return
 	}
-	meta, _ := obj.Object["metadata"].(map[string]interface{})
-	anns, _ := meta["annotations"].(map[string]interface{})
-	expectedSA := ""
-	if anns != nil {
-		if v, ok := anns["ambient-code.io/runner-sa"].(string); ok {
-			expectedSA = strings.TrimSpace(v)
-		}
+
+	// Use type-safe unstructured helpers per CLAUDE.md
+	anns, _, _ := unstructured.NestedStringMap(obj.Object, "metadata", "annotations")
+	expectedSA, ok := anns["ambient-code.io/runner-sa"]
+	if !ok {
+		expectedSA = ""
+	} else {
+		expectedSA = strings.TrimSpace(expectedSA)
 	}
 	if expectedSA == "" || expectedSA != saFromToken {
 		c.JSON(http.StatusForbidden, gin.H{"error": "service account not authorized for session"})
@@ -820,15 +823,8 @@ func MintSessionGitHubToken(c *gin.Context) {
 	}
 
 	// Read authoritative userId from spec.userContext.userId
-	spec, _ := obj.Object["spec"].(map[string]interface{})
-	userID := ""
-	if spec != nil {
-		if uc, ok := spec["userContext"].(map[string]interface{}); ok {
-			if v, ok := uc["userId"].(string); ok {
-				userID = strings.TrimSpace(v)
-			}
-		}
-	}
+	userID, _, _ := unstructured.NestedString(obj.Object, "spec", "userContext", "userId")
+	userID = strings.TrimSpace(userID)
 	if userID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "session missing user context"})
 		return
@@ -875,6 +871,7 @@ func MintSessionVertexCredentials(c *gin.Context) {
 	tr := &authnv1.TokenReview{Spec: authnv1.TokenReviewSpec{Token: token}}
 	rv, err := K8sClient.AuthenticationV1().TokenReviews().Create(c.Request.Context(), tr, v1.CreateOptions{})
 	if err != nil {
+		log.Printf("TokenReview failed for project=%s, session=%s: %v", project, sessionName, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "token review failed"})
 		return
 	}
@@ -908,16 +905,18 @@ func MintSessionVertexCredentials(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
 			return
 		}
+		log.Printf("Failed to get session %s/%s: %v", project, sessionName, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read session"})
 		return
 	}
-	meta, _ := obj.Object["metadata"].(map[string]interface{})
-	anns, _ := meta["annotations"].(map[string]interface{})
-	expectedSA := ""
-	if anns != nil {
-		if v, ok := anns["ambient-code.io/runner-sa"].(string); ok {
-			expectedSA = strings.TrimSpace(v)
-		}
+
+	// Use type-safe unstructured helpers per CLAUDE.md
+	anns, _, _ := unstructured.NestedStringMap(obj.Object, "metadata", "annotations")
+	expectedSA, ok := anns["ambient-code.io/runner-sa"]
+	if !ok {
+		expectedSA = ""
+	} else {
+		expectedSA = strings.TrimSpace(expectedSA)
 	}
 	if expectedSA == "" || expectedSA != saFromToken {
 		c.JSON(http.StatusForbidden, gin.H{"error": "service account not authorized for session"})
@@ -926,8 +925,8 @@ func MintSessionVertexCredentials(c *gin.Context) {
 
 	// Load Vertex credentials from ambient-vertex secret in the backend namespace
 	// Backend reads from its own namespace and serves to authorized runners
+	const vertexSecretName = "ambient-vertex"
 	backendNamespace := Namespace
-	vertexSecretName := "ambient-vertex"
 	vertexSecret, err := K8sClient.CoreV1().Secrets(backendNamespace).Get(c.Request.Context(), vertexSecretName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
