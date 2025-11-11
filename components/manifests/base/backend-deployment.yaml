@@ -75,6 +75,21 @@ spec:
               name: github-app-secret
               key: GITHUB_STATE_SECRET
               optional: true
+        # OOTB Workflows Configuration
+        - name: OOTB_WORKFLOWS_REPO
+          value: "https://github.com/Gkrumbach07/spec-kit-template.git"
+        - name: OOTB_WORKFLOWS_BRANCH
+          value: "main"
+        - name: OOTB_WORKFLOWS_PATH
+          value: "workflows"
+        # Backend needs CLAUDE_CODE_USE_VERTEX to expose vertexEnabled flag via /api/cluster-info
+        # This allows the frontend to show warnings when ANTHROPIC_API_KEY is configured with Vertex enabled
+        # Shares the same config value as the operator for consistency
+        - name: CLAUDE_CODE_USE_VERTEX
+          valueFrom:
+            configMapKeyRef:
+              name: operator-config
+              key: CLAUDE_CODE_USE_VERTEX
         resources:
           requests:
             cpu: 100m

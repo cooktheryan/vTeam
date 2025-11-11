@@ -10,6 +10,7 @@ import sys
 import logging
 import json as _json
 import re
+import shutil
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 from urllib import request as _urllib_request, error as _urllib_error
@@ -30,6 +31,8 @@ class ClaudeCodeAdapter:
         self.shell = None
         self.claude_process = None
         self._incoming_queue: "asyncio.Queue[dict]" = asyncio.Queue()
+        self._restart_requested = False
+        self._first_run = True  # Track if this is the first SDK run or a mid-session restart
 
     async def initialize(self, context: RunnerContext):
         """Initialize the adapter with context."""
@@ -37,6 +40,8 @@ class ClaudeCodeAdapter:
         logging.info(f"Initialized Claude Code adapter for session {context.session_id}")
         # Prepare workspace from input repo if provided
         await self._prepare_workspace()
+        # Initialize workflow if ACTIVE_WORKFLOW env vars are set
+        await self._initialize_workflow_if_set()
         # Validate prerequisite files exist for phase-based commands
         await self._validate_prerequisites()
 
@@ -77,8 +82,21 @@ class ClaudeCodeAdapter:
             except Exception:
                 pass
 
-            # Execute Claude Code CLI (interactive or one-shot based on env)
-            result = await self._run_claude_agent_sdk(prompt)
+            # Execute Claude Code CLI with restart support for workflow switching
+            result = None
+            while True:
+                result = await self._run_claude_agent_sdk(prompt)
+                
+                # Check if restart was requested (workflow changed)
+                if self._restart_requested:
+                    self._restart_requested = False
+                    await self._send_log("🔄 Restarting Claude with new workflow...")
+                    logging.info("Restarting Claude SDK due to workflow change")
+                    # Loop will call _run_claude_agent_sdk again with updated env vars
+                    continue
+                
+                # Normal exit - no restart requested
+                break
 
             # Send completion
             await self._send_log("Claude Code session completed")
@@ -201,12 +219,60 @@ class ClaudeCodeAdapter:
             parent_session_id = self.context.get_env('PARENT_SESSION_ID', '').strip()
             is_continuation = bool(parent_session_id)
 
-            # Determine cwd and additional dirs from multi-repo config
+            # Determine cwd and additional dirs from multi-repo config or workflow
             repos_cfg = self._get_repos_config()
             cwd_path = self.context.workspace_path
             add_dirs = []
-            if repos_cfg:
-                # Prefer explicit MAIN_REPO_NAME, else use MAIN_REPO_INDEX, else default to 0
+            derived_name = None  # Track workflow name for system prompt
+            
+            # Check for active workflow first
+            active_workflow_url = (os.getenv('ACTIVE_WORKFLOW_GIT_URL') or '').strip()
+            if active_workflow_url:
+                # Derive workflow name from URL
+                try:
+                    owner, repo, _ = self._parse_owner_repo(active_workflow_url)
+                    derived_name = repo or ''
+                    if not derived_name:
+                        from urllib.parse import urlparse as _urlparse
+                        p = _urlparse(active_workflow_url)
+                        parts = [p for p in (p.path or '').split('/') if p]
+                        if parts:
+                            derived_name = parts[-1]
+                    derived_name = (derived_name or '').removesuffix('.git').strip()
+                    
+                    if derived_name:
+                        workflow_path = str(Path(self.context.workspace_path) / "workflows" / derived_name)
+                        # NOTE: Don't append ACTIVE_WORKFLOW_PATH here - we already extracted 
+                        # the subdirectory during clone, so workflow_path is the final location
+                        
+                        if Path(workflow_path).exists():
+                            cwd_path = workflow_path
+                            logging.info(f"Using workflow as CWD: {derived_name}")
+                        else:
+                            logging.warning(f"Workflow directory not found: {workflow_path}, using default")
+                            cwd_path = str(Path(self.context.workspace_path) / "workflows" / "default")
+                    else:
+                        cwd_path = str(Path(self.context.workspace_path) / "workflows" / "default")
+                except Exception as e:
+                    logging.warning(f"Failed to derive workflow name: {e}, using default")
+                    cwd_path = str(Path(self.context.workspace_path) / "workflows" / "default")
+                
+                # Add all repos as additional directories so they're accessible to Claude
+                for r in repos_cfg:
+                    name = (r.get('name') or '').strip()
+                    if name:
+                        repo_path = str(Path(self.context.workspace_path) / name)
+                        if repo_path not in add_dirs:
+                            add_dirs.append(repo_path)
+                            logging.info(f"Added repo as additional directory: {name}")
+                
+                # Add artifacts directory
+                artifacts_path = str(Path(self.context.workspace_path) / "artifacts")
+                if artifacts_path not in add_dirs:
+                    add_dirs.append(artifacts_path)
+                    logging.info("Added artifacts directory as additional directory")
+            elif repos_cfg:
+                # Multi-repo mode: Prefer explicit MAIN_REPO_NAME, else use MAIN_REPO_INDEX, else default to 0
                 main_name = (os.getenv('MAIN_REPO_NAME') or '').strip()
                 if not main_name:
                     idx_raw = (os.getenv('MAIN_REPO_INDEX') or '').strip()
@@ -228,6 +294,31 @@ class ClaudeCodeAdapter:
                     p = str(Path(self.context.workspace_path) / name)
                     if p != cwd_path:
                         add_dirs.append(p)
+                
+                # Add artifacts directory for repos mode too
+                artifacts_path = str(Path(self.context.workspace_path) / "artifacts")
+                if artifacts_path not in add_dirs:
+                    add_dirs.append(artifacts_path)
+                    logging.info("Added artifacts directory as additional directory")
+            else:
+                # No workflow and no repos: start in artifacts directory for ad-hoc work
+                cwd_path = str(Path(self.context.workspace_path) / "artifacts")
+
+            # Load ambient.json configuration (only if workflow is active)
+            ambient_config = self._load_ambient_config(cwd_path) if active_workflow_url else {}
+
+            # Ensure the working directory exists before passing to SDK
+            cwd_path_obj = Path(cwd_path)
+            if not cwd_path_obj.exists():
+                logging.warning(f"Working directory does not exist, creating: {cwd_path}")
+                try:
+                    cwd_path_obj.mkdir(parents=True, exist_ok=True)
+                    logging.info(f"Created working directory: {cwd_path}")
+                except Exception as e:
+                    logging.error(f"Failed to create working directory: {e}")
+                    # Fall back to workspace root
+                    cwd_path = self.context.workspace_path
+                    logging.info(f"Falling back to workspace root: {cwd_path}")
 
             # Log working directory and additional directories for debugging
             logging.info(f"Claude SDK CWD: {cwd_path}")
@@ -243,6 +334,19 @@ class ClaudeCodeAdapter:
                     allowed_tools.append(f"mcp__{server_name}")
                 logging.info(f"MCP tool permissions granted for servers: {list(mcp_servers.keys())}")
 
+            # Build comprehensive workspace context system prompt
+            workspace_prompt = self._build_workspace_context_prompt(
+                repos_cfg=repos_cfg,
+                workflow_name=derived_name if active_workflow_url else None,
+                artifacts_path="artifacts",
+                ambient_config=ambient_config
+            )
+            system_prompt_config = {
+                "type": "text",
+                "text": workspace_prompt
+            }
+            logging.info(f"Applied workspace context system prompt (length: {len(workspace_prompt)} chars)")
+
             # Configure SDK options with session resumption if continuing
             options = ClaudeAgentOptions(
                 cwd=cwd_path,
@@ -250,8 +354,7 @@ class ClaudeCodeAdapter:
                 allowed_tools= allowed_tools,
                 mcp_servers=mcp_servers,
                 setting_sources=["project"],
-                system_prompt={"type":"preset",
-                               "preset":"claude_code"}
+                system_prompt=system_prompt_config
                 )
 
             # Use SDK's built-in session resumption if continuing
@@ -283,6 +386,10 @@ class ClaudeCodeAdapter:
             model = self.context.get_env('LLM_MODEL')
             if model:
                 try:
+                    # Map Anthropic API model names to Vertex AI model names if using Vertex
+                    if use_vertex:
+                        model = self._map_to_vertex_model(model)
+                        logging.info(f"Mapped to Vertex AI model: {model}")
                     options.model = model  # type: ignore[attr-defined]
                 except Exception:
                     pass
@@ -412,17 +519,26 @@ class ClaudeCodeAdapter:
                     await client.query(text)
                     await process_response_stream(client)
 
-                # Initial prompt (if any)
-                # Skip if this is a continuation - SDK already has the full context
-                if prompt and prompt.strip() and not is_continuation:
-                    # Store the initial prompt as a user message so it appears in history for continuation
-                    await self.shell._send_message(
-                        MessageType.USER_MESSAGE,
-                        {"content": prompt},
-                    )
-                    await process_one_prompt(prompt)
-                elif is_continuation:
-                    logging.info("Skipping initial prompt - SDK resuming with full context")
+                # Handle startup prompts
+                # Only send startupPrompt from workflow on restart (not first run)
+                # This way workflow greeting appears when you switch TO a workflow mid-session
+                if not is_continuation:
+                    if ambient_config.get("startupPrompt") and not self._first_run:
+                        # Workflow was just activated - show its greeting
+                        startup_msg = ambient_config["startupPrompt"]
+                        await process_one_prompt(startup_msg)
+                        logging.info(f"Sent workflow startupPrompt ({len(startup_msg)} chars)")
+                    elif prompt and prompt.strip() and self._first_run:
+                        # First run with explicit prompt - use it
+                        await process_one_prompt(prompt)
+                        logging.info("Sent initial prompt to bootstrap session")
+                    else:
+                        logging.info("No initial prompt - Claude will greet based on system prompt")
+                else:
+                    logging.info("Skipping prompts - SDK resuming with full context")
+                
+                # Mark that first run is complete
+                self._first_run = False
 
                 if interactive:
                     await self._send_log({"level": "system", "message": "Chat ready"})
@@ -439,6 +555,27 @@ class ClaudeCodeAdapter:
                                 await process_one_prompt(text)
                         elif mtype in ('end_session', 'terminate', 'stop'):
                             await self._send_log({"level": "system", "message": "interactive.ended"})
+                            break
+                        elif mtype == 'workflow_change':
+                            # Handle workflow selection during interactive session
+                            git_url = str(payload.get('gitUrl') or '').strip()
+                            branch = str(payload.get('branch') or 'main').strip()
+                            path = str(payload.get('path') or '').strip()
+                            if git_url:
+                                await self._handle_workflow_selection(git_url, branch, path)
+                                # Break out of interactive loop to trigger restart
+                                break
+                            else:
+                                await self._send_log("⚠️ Workflow change request missing gitUrl")
+                        elif mtype == 'repo_added':
+                            # Handle dynamic repo addition
+                            await self._handle_repo_added(payload)
+                            # Break out of interactive loop to trigger restart
+                            break
+                        elif mtype == 'repo_removed':
+                            # Handle dynamic repo removal
+                            await self._handle_repo_removed(payload)
+                            # Break out of interactive loop to trigger restart
                             break
                         elif mtype == 'interrupt':
                             try:
@@ -467,6 +604,28 @@ class ClaudeCodeAdapter:
                 "success": False,
                 "error": str(e)
             }
+
+    def _map_to_vertex_model(self, model: str) -> str:
+        """Map Anthropic API model names to Vertex AI model names.
+
+        Args:
+            model: Anthropic API model name (e.g., 'claude-sonnet-4-5')
+
+        Returns:
+            Vertex AI model name (e.g., 'claude-sonnet-4-5@20250929')
+        """
+        # Model mapping from Anthropic API to Vertex AI
+        # Reference: https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/use-claude
+        model_map = {
+            'claude-opus-4-1': 'claude-opus-4-1@20250805',
+            'claude-sonnet-4-5': 'claude-sonnet-4-5@20250929',
+            'claude-haiku-4-5': 'claude-haiku-4-5@20251001',
+        }
+
+        mapped = model_map.get(model, model)
+        if mapped != model:
+            logging.info(f"Model mapping: {model} → {mapped}")
+        return mapped
 
     async def _setup_vertex_credentials(self) -> dict:
         """Set up Google Cloud Vertex AI credentials from backend service.
@@ -556,6 +715,8 @@ class ClaudeCodeAdapter:
                         logging.info(f"Cloning {name} from {url} (branch: {branch})")
                         clone_url = self._url_with_token(url, token) if token else url
                         await self._run_cmd(["git", "clone", "--branch", branch, "--single-branch", clone_url, str(repo_dir)], cwd=str(workspace))
+                        # Update remote URL to persist token (git strips it from clone URL)
+                        await self._run_cmd(["git", "remote", "set-url", "origin", clone_url], cwd=str(repo_dir), ignore_errors=True)
                         logging.info(f"Successfully cloned {name}")
                     elif reusing_workspace:
                         # Reusing workspace - preserve local changes from previous session
@@ -611,6 +772,8 @@ class ClaudeCodeAdapter:
                 logging.info(f"Cloning from {input_repo} (branch: {input_branch})")
                 clone_url = self._url_with_token(input_repo, token) if token else input_repo
                 await self._run_cmd(["git", "clone", "--branch", input_branch, "--single-branch", clone_url, str(workspace)], cwd=str(workspace.parent))
+                # Update remote URL to persist token (git strips it from clone URL)
+                await self._run_cmd(["git", "remote", "set-url", "origin", clone_url], cwd=str(workspace), ignore_errors=True)
                 logging.info("Successfully cloned repository")
             elif reusing_workspace:
                 # Reusing workspace - preserve local changes from previous session
@@ -644,6 +807,14 @@ class ClaudeCodeAdapter:
         except Exception as e:
             logging.error(f"Failed to prepare workspace: {e}")
             await self._send_log(f"Workspace preparation failed: {e}")
+
+        # Create artifacts directory (initial working directory)
+        try:
+            artifacts_dir = workspace / "artifacts"
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+            logging.info("Created artifacts directory")
+        except Exception as e:
+            logging.warning(f"Failed to create artifacts directory: {e}")
 
     async def _validate_prerequisites(self):
         """Validate prerequisite files exist for phase-based slash commands."""
@@ -696,6 +867,193 @@ class ClaudeCodeAdapter:
 
                 break  # Only check the first matching command
 
+    async def _initialize_workflow_if_set(self):
+        """Initialize workflow on startup if ACTIVE_WORKFLOW env vars are set."""
+        active_workflow_url = (os.getenv('ACTIVE_WORKFLOW_GIT_URL') or '').strip()
+        if not active_workflow_url:
+            return  # No workflow to initialize
+        
+        active_workflow_branch = (os.getenv('ACTIVE_WORKFLOW_BRANCH') or 'main').strip()
+        active_workflow_path = (os.getenv('ACTIVE_WORKFLOW_PATH') or '').strip()
+        
+        # Derive workflow name from URL
+        try:
+            owner, repo, _ = self._parse_owner_repo(active_workflow_url)
+            derived_name = repo or ''
+            if not derived_name:
+                from urllib.parse import urlparse as _urlparse
+                p = _urlparse(active_workflow_url)
+                parts = [p for p in (p.path or '').split('/') if p]
+                if parts:
+                    derived_name = parts[-1]
+            derived_name = (derived_name or '').removesuffix('.git').strip()
+            
+            if not derived_name:
+                logging.warning("Could not derive workflow name from URL, skipping initialization")
+                return
+            
+            workflow_dir = Path(self.context.workspace_path) / "workflows" / derived_name
+            
+            # Only clone if workflow directory doesn't exist
+            if workflow_dir.exists():
+                logging.info(f"Workflow {derived_name} already exists, skipping initialization")
+                return
+            
+            logging.info(f"Initializing workflow {derived_name} from CR spec on startup")
+            # Clone the workflow but don't request restart (we haven't started yet)
+            await self._clone_workflow_repository(active_workflow_url, active_workflow_branch, active_workflow_path, derived_name)
+            
+        except Exception as e:
+            logging.error(f"Failed to initialize workflow on startup: {e}")
+            # Don't fail the session if workflow init fails - continue without it
+    
+    async def _clone_workflow_repository(self, git_url: str, branch: str, path: str, workflow_name: str):
+        """Clone workflow repository without requesting restart (used during initialization)."""
+        workspace = Path(self.context.workspace_path)
+        token = os.getenv("GITHUB_TOKEN") or await self._fetch_github_token()
+        
+        workflow_dir = workspace / "workflows" / workflow_name
+        temp_clone_dir = workspace / "workflows" / f"{workflow_name}-clone-temp"
+        
+        # Check if workflow already exists
+        if workflow_dir.exists():
+            await self._send_log(f"✓ Workflow {workflow_name} already loaded")
+            logging.info(f"Workflow {workflow_name} already exists at {workflow_dir}")
+            return
+        
+        # Clone to temporary directory first
+        await self._send_log(f"📥 Cloning workflow {workflow_name}...")
+        logging.info(f"Cloning workflow from {git_url} (branch: {branch})")
+        clone_url = self._url_with_token(git_url, token) if token else git_url
+        await self._run_cmd(["git", "clone", "--branch", branch, "--single-branch", clone_url, str(temp_clone_dir)], cwd=str(workspace))
+        logging.info(f"Successfully cloned workflow to temp directory")
+        
+        # Extract subdirectory if path is specified
+        if path and path.strip():
+            subdir_path = temp_clone_dir / path.strip()
+            if subdir_path.exists() and subdir_path.is_dir():
+                # Copy only the subdirectory contents
+                shutil.copytree(subdir_path, workflow_dir)
+                shutil.rmtree(temp_clone_dir)
+                await self._send_log(f"✓ Extracted workflow from: {path}")
+                logging.info(f"Extracted subdirectory {path} to {workflow_dir}")
+            else:
+                # Path not found, use full repo
+                temp_clone_dir.rename(workflow_dir)
+                await self._send_log(f"⚠️ Path '{path}' not found, using full repository")
+                logging.warning(f"Subdirectory {path} not found, using full repo")
+        else:
+            # No path specified, use entire repo
+            temp_clone_dir.rename(workflow_dir)
+            logging.info(f"Using entire repository as workflow")
+        
+        await self._send_log(f"✅ Workflow {workflow_name} ready")
+        logging.info(f"Workflow {workflow_name} setup complete at {workflow_dir}")
+
+    async def _handle_workflow_selection(self, git_url: str, branch: str = "main", path: str = ""):
+        """Clone and setup a workflow repository during an interactive session."""
+        try:
+            # Derive workflow name from URL
+            try:
+                owner, repo, _ = self._parse_owner_repo(git_url)
+                derived_name = repo or ''
+                if not derived_name:
+                    # Fallback: last path segment without .git
+                    from urllib.parse import urlparse as _urlparse
+                    p = _urlparse(git_url)
+                    parts = [p for p in (p.path or '').split('/') if p]
+                    if parts:
+                        derived_name = parts[-1]
+                derived_name = (derived_name or '').removesuffix('.git').strip()
+            except Exception:
+                derived_name = 'workflow'
+            
+            if not derived_name:
+                await self._send_log("❌ Could not derive workflow name from URL")
+                return
+            
+            # Clone the workflow repository
+            await self._clone_workflow_repository(git_url, branch, path, derived_name)
+            
+            # Set environment variables for the restart
+            os.environ['ACTIVE_WORKFLOW_GIT_URL'] = git_url
+            os.environ['ACTIVE_WORKFLOW_BRANCH'] = branch
+            if path and path.strip():
+                os.environ['ACTIVE_WORKFLOW_PATH'] = path
+            
+            # Request restart to switch Claude's working directory
+            self._restart_requested = True
+            
+        except Exception as e:
+            logging.error(f"Failed to setup workflow: {e}")
+            await self._send_log(f"❌ Workflow setup failed: {e}")
+
+    async def _handle_repo_added(self, payload):
+        """Clone newly added repository and request restart."""
+        repo_url = str(payload.get('url') or '').strip()
+        repo_branch = str(payload.get('branch') or '').strip() or 'main'
+        repo_name = str(payload.get('name') or '').strip()
+        
+        if not repo_url or not repo_name:
+            logging.warning("Invalid repo_added payload")
+            return
+        
+        workspace = Path(self.context.workspace_path)
+        repo_dir = workspace / repo_name
+        
+        if repo_dir.exists():
+            await self._send_log(f"Repository {repo_name} already exists")
+            return
+        
+        token = os.getenv("GITHUB_TOKEN") or await self._fetch_github_token()
+        clone_url = self._url_with_token(repo_url, token) if token else repo_url
+        
+        await self._send_log(f"📥 Cloning {repo_name}...")
+        await self._run_cmd(["git", "clone", "--branch", repo_branch, "--single-branch", clone_url, str(repo_dir)], cwd=str(workspace))
+        
+        # Configure git identity
+        user_name = os.getenv("GIT_USER_NAME", "").strip() or "Ambient Code Bot"
+        user_email = os.getenv("GIT_USER_EMAIL", "").strip() or "bot@ambient-code.local"
+        await self._run_cmd(["git", "config", "user.name", user_name], cwd=str(repo_dir))
+        await self._run_cmd(["git", "config", "user.email", user_email], cwd=str(repo_dir))
+        
+        await self._send_log(f"✅ Repository {repo_name} added")
+        
+        # Update REPOS_JSON env var
+        repos_cfg = self._get_repos_config()
+        repos_cfg.append({'name': repo_name, 'input': {'url': repo_url, 'branch': repo_branch}})
+        os.environ['REPOS_JSON'] = _json.dumps(repos_cfg)
+        
+        # Request restart to update additional directories
+        self._restart_requested = True
+
+    async def _handle_repo_removed(self, payload):
+        """Remove repository and request restart."""
+        repo_name = str(payload.get('name') or '').strip()
+        
+        if not repo_name:
+            logging.warning("Invalid repo_removed payload")
+            return
+        
+        workspace = Path(self.context.workspace_path)
+        repo_dir = workspace / repo_name
+        
+        if not repo_dir.exists():
+            await self._send_log(f"Repository {repo_name} not found")
+            return
+        
+        await self._send_log(f"🗑️ Removing {repo_name}...")
+        shutil.rmtree(repo_dir)
+        
+        # Update REPOS_JSON env var
+        repos_cfg = self._get_repos_config()
+        repos_cfg = [r for r in repos_cfg if r.get('name') != repo_name]
+        os.environ['REPOS_JSON'] = _json.dumps(repos_cfg)
+        
+        await self._send_log(f"✅ Repository {repo_name} removed")
+        
+        # Request restart to update additional directories
+        self._restart_requested = True
 
     async def _push_results_if_any(self):
         """Commit and push changes to output repo/branch if configured."""
@@ -1259,7 +1617,7 @@ class ClaudeCodeAdapter:
             return ""
 
     async def _fetch_github_token(self) -> str:
-        # Try cached value from env first
+        # Try cached value from env first (GITHUB_TOKEN from ambient-non-vertex-integrations)
         cached = os.getenv("GITHUB_TOKEN", "").strip()
         if cached:
             logging.info("Using GITHUB_TOKEN from environment")
@@ -1431,13 +1789,48 @@ class ClaudeCodeAdapter:
         msg_type = message.get('type', '')
 
         # Queue interactive messages for processing loop
-        if msg_type in ('user_message', 'interrupt', 'end_session', 'terminate', 'stop'):
+        if msg_type in ('user_message', 'interrupt', 'end_session', 'terminate', 'stop', 'workflow_change', 'repo_added', 'repo_removed'):
             await self._incoming_queue.put(message)
             logging.debug(f"Queued incoming message: {msg_type}")
             return
 
         logging.debug(f"Claude Code adapter received message: {msg_type}")
 
+    def _build_workspace_context_prompt(self, repos_cfg, workflow_name, artifacts_path, ambient_config):
+        """Generate comprehensive system prompt describing workspace layout."""
+        
+        prompt = "You are Claude Code working in a structured development workspace.\n\n"
+        
+        # Current working directory
+        if workflow_name:
+            prompt += "## Current Workflow\n"
+            prompt += f"Working directory: workflows/{workflow_name}/\n"
+            prompt += "This directory contains workflow logic and automation scripts.\n\n"
+        
+        # Artifacts directory
+        prompt += "## Shared Artifacts Directory\n"
+        prompt += f"Location: {artifacts_path}\n"
+        prompt += "Purpose: Create all output artifacts (documents, specs, reports) here.\n"
+        prompt += "This directory persists across workflows and has its own git remote.\n\n"
+        
+        # Available repos
+        if repos_cfg:
+            prompt += "## Available Code Repositories\n"
+            for i, repo in enumerate(repos_cfg):
+                name = repo.get('name', f'repo-{i}')
+                prompt += f"- {name}/\n"
+            prompt += "\nThese repositories contain source code you can read or modify.\n"
+            prompt += "Each has its own git configuration and remote.\n\n"
+        
+        # Workflow-specific instructions
+        if ambient_config.get("systemPrompt"):
+            prompt += f"## Workflow Instructions\n{ambient_config['systemPrompt']}\n\n"
+        
+        prompt += "## Navigation\n"
+        prompt += "All directories are accessible via relative or absolute paths.\n"
+        
+        return prompt
+    
     def _get_repos_config(self) -> list[dict]:
         """Read repos mapping from REPOS_JSON env if present."""
         try:
@@ -1582,6 +1975,31 @@ class ClaudeCodeAdapter:
         except Exception as e:
             logging.error(f"Error loading MCP config: {e}")
             return None
+
+    def _load_ambient_config(self, cwd_path: str) -> dict:
+        """Load ambient.json configuration from workflow directory.
+        
+        Searches for ambient.json in the .ambient directory relative to the working directory.
+        Returns empty dict if not found (not an error - just use defaults).
+        """
+        try:
+            config_path = Path(cwd_path) / ".ambient" / "ambient.json"
+            
+            if not config_path.exists():
+                logging.info(f"No ambient.json found at {config_path}, using defaults")
+                return {}
+            
+            with open(config_path, 'r') as f:
+                config = _json.load(f)
+                logging.info(f"Loaded ambient.json: name={config.get('name')}, artifactsDir={config.get('artifactsDir')}")
+                return config
+                
+        except _json.JSONDecodeError as e:
+            logging.error(f"Failed to parse ambient.json: {e}")
+            return {}
+        except Exception as e:
+            logging.error(f"Error loading ambient.json: {e}")
+            return {}
 
 
 async def main():

@@ -16,8 +16,6 @@ spec:
         properties:
           spec:
             type: object
-            required:
-            - prompt
             properties:
               # Multiple-repo configuration (new unified mapping)
               repos:
@@ -60,7 +58,7 @@ spec:
                 description: "When true, run session in interactive chat mode using inbox/outbox files"
               prompt:
                 type: string
-                description: "The initial prompt for the agentic session"
+                description: "Optional initial prompt for the agentic session. If using a workflow with startupPrompt in ambient.json, this can be omitted."
               displayName:
                 type: string
                 description: "A descriptive display name for the agentic session generated from prompt and website"
@@ -100,6 +98,20 @@ spec:
                 type: boolean
                 default: false
                 description: "When true, the runner will commit and push changes automatically after it finishes"
+              activeWorkflow:
+                type: object
+                description: "Active workflow configuration for dynamic workflow switching"
+                properties:
+                  gitUrl:
+                    type: string
+                    description: "Git repository URL for the workflow"
+                  branch:
+                    type: string
+                    description: "Branch to clone"
+                    default: "main"
+                  path:
+                    type: string
+                    description: "Optional path within repo (for repos with multiple workflows)"
           status:
             type: object
             properties:
