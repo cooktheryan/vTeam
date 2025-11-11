@@ -12,17 +12,32 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/fake"
-	"k8s.io/client-go/kubernetes/scheme"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
+// setupTestGVR initializes the GetAgenticSessionV1Alpha1Resource function for tests
+func setupTestGVR() {
+	GetAgenticSessionV1Alpha1Resource = func() schema.GroupVersionResource {
+		return schema.GroupVersionResource{
+			Group:    "vteam.ambient-code",
+			Version:  "v1alpha1",
+			Resource: "agenticsessions",
+		}
+	}
+}
+
 func TestMintSessionVertexCredentials_Success(t *testing.T) {
+	// Setup backend namespace (backend reads secret from its own namespace)
+	Namespace = "backend-namespace"
+
 	// Setup fake K8s clients
 	vertexSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "ambient-vertex",
-			Namespace: "backend-namespace",
+			Namespace: "backend-namespace", // Must match Namespace variable
 		},
 		Data: map[string][]byte{
 			"ambient-code-key.json": []byte(`{"type":"service_account","project_id":"test"}`),
@@ -31,7 +46,8 @@ func TestMintSessionVertexCredentials_Success(t *testing.T) {
 		},
 	}
 
-	K8sClient = k8sfake.NewSimpleClientset(vertexSecret)
+	fakeClient := k8sfake.NewSimpleClientset(vertexSecret)
+	K8sClient = fakeClient
 
 	// Create AgenticSession CR
 	sessionCR := &unstructured.Unstructured{
@@ -50,6 +66,8 @@ func TestMintSessionVertexCredentials_Success(t *testing.T) {
 
 	s := runtime.NewScheme()
 	DynamicClient = fake.NewSimpleDynamicClient(s, sessionCR)
+	setupTestGVR()
+	setupTestGVR()
 
 	// Setup Gin router
 	gin.SetMode(gin.TestMode)
@@ -61,19 +79,16 @@ func TestMintSessionVertexCredentials_Success(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer test-token")
 
 	// Mock TokenReview to return valid ServiceAccount
-	mockTokenReview := func() {
-		K8sClient.(*k8sfake.Clientset).PrependReactor("create", "tokenreviews", func(action k8sfake.Action) (bool, runtime.Object, error) {
-			return true, &authnv1.TokenReview{
-				Status: authnv1.TokenReviewStatus{
-					Authenticated: true,
-					User: authnv1.UserInfo{
-						Username: "system:serviceaccount:test-project:test-session-runner",
-					},
+	fakeClient.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, &authnv1.TokenReview{
+			Status: authnv1.TokenReviewStatus{
+				Authenticated: true,
+				User: authnv1.UserInfo{
+					Username: "system:serviceaccount:test-project:test-session-runner",
 				},
-			}, nil
-		})
-	}
-	mockTokenReview()
+			},
+		}, nil
+	})
 
 	// Execute request
 	w := httptest.NewRecorder()
@@ -118,10 +133,11 @@ func TestMintSessionVertexCredentials_MissingAuthHeader(t *testing.T) {
 }
 
 func TestMintSessionVertexCredentials_InvalidToken(t *testing.T) {
-	K8sClient = k8sfake.NewSimpleClientset()
+	fakeClient := k8sfake.NewSimpleClientset()
+	K8sClient = fakeClient
 
 	// Mock TokenReview to return unauthenticated
-	K8sClient.(*k8sfake.Clientset).PrependReactor("create", "tokenreviews", func(action k8sfake.Action) (bool, runtime.Object, error) {
+	fakeClient.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, &authnv1.TokenReview{
 			Status: authnv1.TokenReviewStatus{
 				Authenticated: false,
@@ -146,10 +162,11 @@ func TestMintSessionVertexCredentials_InvalidToken(t *testing.T) {
 }
 
 func TestMintSessionVertexCredentials_WrongNamespace(t *testing.T) {
-	K8sClient = k8sfake.NewSimpleClientset()
+	fakeClient := k8sfake.NewSimpleClientset()
+	K8sClient = fakeClient
 
 	// Mock TokenReview to return SA from different namespace
-	K8sClient.(*k8sfake.Clientset).PrependReactor("create", "tokenreviews", func(action k8sfake.Action) (bool, runtime.Object, error) {
+	fakeClient.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, &authnv1.TokenReview{
 			Status: authnv1.TokenReviewStatus{
 				Authenticated: true,
@@ -176,6 +193,7 @@ func TestMintSessionVertexCredentials_WrongNamespace(t *testing.T) {
 
 	s := runtime.NewScheme()
 	DynamicClient = fake.NewSimpleDynamicClient(s, sessionCR)
+	setupTestGVR()
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -193,10 +211,11 @@ func TestMintSessionVertexCredentials_WrongNamespace(t *testing.T) {
 }
 
 func TestMintSessionVertexCredentials_SessionNotFound(t *testing.T) {
-	K8sClient = k8sfake.NewSimpleClientset()
+	fakeClient := k8sfake.NewSimpleClientset()
+	K8sClient = fakeClient
 
 	// Mock valid TokenReview
-	K8sClient.(*k8sfake.Clientset).PrependReactor("create", "tokenreviews", func(action k8sfake.Action) (bool, runtime.Object, error) {
+	fakeClient.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, &authnv1.TokenReview{
 			Status: authnv1.TokenReviewStatus{
 				Authenticated: true,
@@ -210,6 +229,7 @@ func TestMintSessionVertexCredentials_SessionNotFound(t *testing.T) {
 	// Empty dynamic client (no session CR)
 	s := runtime.NewScheme()
 	DynamicClient = fake.NewSimpleDynamicClient(s)
+	setupTestGVR()
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -227,10 +247,11 @@ func TestMintSessionVertexCredentials_SessionNotFound(t *testing.T) {
 }
 
 func TestMintSessionVertexCredentials_SAMismatch(t *testing.T) {
-	K8sClient = k8sfake.NewSimpleClientset()
+	fakeClient := k8sfake.NewSimpleClientset()
+	K8sClient = fakeClient
 
 	// Mock TokenReview with different SA name
-	K8sClient.(*k8sfake.Clientset).PrependReactor("create", "tokenreviews", func(action k8sfake.Action) (bool, runtime.Object, error) {
+	fakeClient.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, &authnv1.TokenReview{
 			Status: authnv1.TokenReviewStatus{
 				Authenticated: true,
@@ -258,6 +279,7 @@ func TestMintSessionVertexCredentials_SAMismatch(t *testing.T) {
 
 	s := runtime.NewScheme()
 	DynamicClient = fake.NewSimpleDynamicClient(s, sessionCR)
+	setupTestGVR()
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -275,10 +297,14 @@ func TestMintSessionVertexCredentials_SAMismatch(t *testing.T) {
 }
 
 func TestMintSessionVertexCredentials_SecretNotFound(t *testing.T) {
-	// K8s client with no vertex secret
-	K8sClient = k8sfake.NewSimpleClientset()
+	// Setup backend namespace
+	Namespace = "backend-namespace"
 
-	K8sClient.(*k8sfake.Clientset).PrependReactor("create", "tokenreviews", func(action k8sfake.Action) (bool, runtime.Object, error) {
+	// K8s client with no vertex secret
+	fakeClient := k8sfake.NewSimpleClientset()
+	K8sClient = fakeClient
+
+	fakeClient.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, &authnv1.TokenReview{
 			Status: authnv1.TokenReviewStatus{
 				Authenticated: true,
@@ -305,6 +331,7 @@ func TestMintSessionVertexCredentials_SecretNotFound(t *testing.T) {
 
 	s := runtime.NewScheme()
 	DynamicClient = fake.NewSimpleDynamicClient(s, sessionCR)
+	setupTestGVR()
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -328,11 +355,14 @@ func TestMintSessionVertexCredentials_SecretNotFound(t *testing.T) {
 }
 
 func TestMintSessionVertexCredentials_MissingCredentialFile(t *testing.T) {
+	// Setup backend namespace
+	Namespace = "backend-namespace"
+
 	// Secret missing the key file
 	incompleteSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "ambient-vertex",
-			Namespace: "test-project",
+			Namespace: "backend-namespace", // Must match Namespace variable
 		},
 		Data: map[string][]byte{
 			"project-id": []byte("test-project"),
@@ -340,9 +370,10 @@ func TestMintSessionVertexCredentials_MissingCredentialFile(t *testing.T) {
 		},
 	}
 
-	K8sClient = k8sfake.NewSimpleClientset(incompleteSecret)
+	fakeClient := k8sfake.NewSimpleClientset(incompleteSecret)
+	K8sClient = fakeClient
 
-	K8sClient.(*k8sfake.Clientset).PrependReactor("create", "tokenreviews", func(action k8sfake.Action) (bool, runtime.Object, error) {
+	fakeClient.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, &authnv1.TokenReview{
 			Status: authnv1.TokenReviewStatus{
 				Authenticated: true,
@@ -369,6 +400,7 @@ func TestMintSessionVertexCredentials_MissingCredentialFile(t *testing.T) {
 
 	s := runtime.NewScheme()
 	DynamicClient = fake.NewSimpleDynamicClient(s, sessionCR)
+	setupTestGVR()
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

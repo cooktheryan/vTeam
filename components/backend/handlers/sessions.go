@@ -34,7 +34,7 @@ import (
 var (
 	GetAgenticSessionV1Alpha1Resource func() schema.GroupVersionResource
 	DynamicClient                     dynamic.Interface
-	GetGitHubToken                    func(context.Context, *kubernetes.Clientset, dynamic.Interface, string, string) (string, error)
+	GetGitHubToken                    func(context.Context, kubernetes.Interface, dynamic.Interface, string, string) (string, error)
 	DeriveRepoFolderFromURL           func(string) string
 )
 
@@ -596,7 +596,7 @@ func CreateSession(c *gin.Context) {
 
 // provisionRunnerTokenForSession creates a per-session ServiceAccount, grants minimal RBAC,
 // mints a short-lived token, stores it in a Secret, and annotates the AgenticSession with the Secret name.
-func provisionRunnerTokenForSession(c *gin.Context, reqK8s *kubernetes.Clientset, reqDyn dynamic.Interface, project string, sessionName string) error {
+func provisionRunnerTokenForSession(c *gin.Context, reqK8s kubernetes.Interface, reqDyn dynamic.Interface, project string, sessionName string) error {
 	// Load owning AgenticSession to parent all resources
 	gvr := GetAgenticSessionV1Alpha1Resource()
 	obj, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), sessionName, v1.GetOptions{})
@@ -904,6 +904,9 @@ func MintSessionVertexCredentials(c *gin.Context) {
 		return
 	}
 
+	// Log token length for debugging (never log actual token value)
+	log.Printf("MintSessionVertexCredentials: project=%s, session=%s, tokenLen=%d", project, sessionName, len(token))
+
 	// TokenReview using default audience (works with standard SA tokens)
 	tr := &authnv1.TokenReview{Spec: authnv1.TokenReviewSpec{Token: token}}
 	rv, err := K8sClient.AuthenticationV1().TokenReviews().Create(c.Request.Context(), tr, v1.CreateOptions{})
@@ -957,15 +960,17 @@ func MintSessionVertexCredentials(c *gin.Context) {
 		return
 	}
 
-	// Load Vertex credentials from ambient-vertex secret in the project namespace
+	// Load Vertex credentials from ambient-vertex secret in the backend namespace
+	// Backend reads from its own namespace and serves to authorized runners
+	backendNamespace := Namespace
 	vertexSecretName := "ambient-vertex"
-	vertexSecret, err := K8sClient.CoreV1().Secrets(project).Get(c.Request.Context(), vertexSecretName, v1.GetOptions{})
+	vertexSecret, err := K8sClient.CoreV1().Secrets(backendNamespace).Get(c.Request.Context(), vertexSecretName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Vertex credentials not configured for this project"})
 			return
 		}
-		log.Printf("Failed to load Vertex secret for project %s: %v", project, err)
+		log.Printf("Failed to load Vertex secret from backend namespace %s: %v", backendNamespace, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load Vertex credentials"})
 		return
 	}
