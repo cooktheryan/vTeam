@@ -673,15 +673,17 @@ class ClaudeCodeAdapter:
                 f.write(credentials_json)
             # Set restrictive permissions (owner read-only)
             os.chmod(creds_path, 0o400)
+
+            # CRITICAL: Track path immediately after successful write
+            # so cleanup happens even if subsequent steps fail
+            self._vertex_credentials_path = creds_path
+
             logging.info(f"Vertex credentials written to {creds_path} with mode 0o400")
         except Exception as e:
             raise RuntimeError(f"Failed to write Vertex credentials to temp file: {e}")
 
         logging.info(f"Vertex AI configured: project={project_id}, region={region}")
         await self._send_log(f"Using Vertex AI with project {project_id} in {region}")
-
-        # Track credential path for cleanup
-        self._vertex_credentials_path = creds_path
 
         return {
             'credentials_path': creds_path,

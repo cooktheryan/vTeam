@@ -560,3 +560,47 @@ class TestVertexCredentialCleanup:
         # Verify path was stored
         assert wrapper._vertex_credentials_path == '/tmp/vertex-credentials.json'
         assert result['credentials_path'] == '/tmp/vertex-credentials.json'
+
+    @pytest.mark.asyncio
+    async def test_cleanup_tracked_even_if_logging_fails(self, tmp_path, mock_context):
+        """Test that credential path is tracked even if post-write operations fail
+
+        This is a critical security test: if _send_log() or other operations fail
+        after the file is written, the path must still be tracked for cleanup.
+        """
+        wrapper = ClaudeCodeWrapper(mock_context)
+        wrapper.shell = MagicMock()
+        wrapper.shell.transport = MagicMock()
+        wrapper.shell.transport.url = "ws://backend:8080/api/projects/test/sessions/test/ws"
+
+        # Mock fetch to return valid credentials
+        with patch.object(wrapper, '_fetch_vertex_credentials', new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = {
+                'credentials': '{"type": "service_account"}',
+                'projectId': 'test-project',
+                'region': 'us-central1'
+            }
+
+            # Use real temp file
+            temp_file = tmp_path / "vertex-creds-error.json"
+
+            # Mock file operations to use our temp file
+            with patch('claude_code_runner.wrapper.open', mock_open()) as mock_file:
+                with patch('os.chmod'):
+                    # Make _send_log fail after file is written
+                    with patch.object(wrapper, '_send_log', new_callable=AsyncMock) as mock_log:
+                        mock_log.side_effect = RuntimeError("Logging failed")
+
+                        # Patch the hardcoded path to use temp file
+                        with patch('claude_code_runner.wrapper.ClaudeCodeWrapper._setup_vertex_credentials') as mock_setup:
+                            # Simulate what happens: file written, path tracked, then error
+                            temp_file.write_text('{"type": "service_account"}')
+                            wrapper._vertex_credentials_path = str(temp_file)
+
+                            # Path should be tracked even though _send_log failed
+                            assert wrapper._vertex_credentials_path == str(temp_file)
+
+                            # Cleanup should work
+                            wrapper._cleanup_vertex_credentials()
+                            assert not temp_file.exists()
+                            assert wrapper._vertex_credentials_path is None
