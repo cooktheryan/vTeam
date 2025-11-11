@@ -72,16 +72,11 @@ class ClaudeCodeAdapter:
                 logging.debug("CR status update (Running) skipped")
 
 
-            # Append token to websocket URL if available (to pass SA token to backend)
-            try:
-                if self.shell and getattr(self.shell, 'transport', None):
-                    ws = getattr(self.shell.transport, 'url', '') or ''
-                    bot = (os.getenv('BOT_TOKEN') or '').strip()
-                    if bot and ws and '?' not in ws:
-                        # Safe to append token as query for backend to map into Authorization
-                        setattr(self.shell.transport, 'url', ws + f"?token={bot}")
-            except Exception:
-                pass
+            # WebSocket Authentication
+            # NOTE: Authentication is handled automatically by runner-shell's WebSocketTransport
+            # The transport reads BOT_TOKEN from environment and sets Authorization header
+            # See: runner-shell/runner_shell/core/transport_ws.py:32-36
+            # No manual token injection needed here
 
             # Execute Claude Code CLI with restart support for workflow switching
             result = None
