@@ -9,51 +9,66 @@ describe('vTeam E2E Tests', () => {
   it('should access the UI with token authentication', () => {
     // Visit root, which redirects to /projects
     cy.visit('/', { failOnStatusCode: false })
-    
+
     // Wait for redirect and page to load
     cy.url({ timeout: 15000 }).should('include', '/projects')
-    cy.contains('Projects', { timeout: 15000 }).should('be.visible')
+    // UI now shows "Workspaces" instead of "Projects"
+    cy.contains('Workspaces', { timeout: 15000 }).should('be.visible')
   })
 
-  it('should navigate to new project page', () => {
+  it('should open create workspace dialog', () => {
     cy.visit('/projects')
-    
-    // Wait for page to be fully loaded
-    cy.get('body').should('be.visible')
-    
-    // Click the "New Project" button
-    cy.contains('New Project').click()
-    
-    // Verify we're on the new project page
-    cy.url().should('include', '/projects/new')
-    cy.contains('Create New Project').should('be.visible')
+
+    // Wait for page to be fully loaded and workspaces card to render
+    cy.contains('Workspaces').should('be.visible')
+
+    // Click the "New Workspace" button (changed from "New Project")
+    cy.contains('button', 'New Workspace').click()
+
+    // Verify dialog opens (no route change - it's a modal now)
+    cy.contains('Create New Workspace').should('be.visible')
+
+    // Close the dialog to clean up for next test
+    cy.contains('button', 'Cancel').click()
   })
 
-  it('should create a new project', () => {
-    cy.visit('/projects/new')
-    
+  it('should create a new workspace', () => {
+    cy.visit('/projects')
+
+    // Wait for page to be fully loaded
+    cy.contains('Workspaces').should('be.visible')
+
     // Generate unique project name
     const projectName = `e2e-test-${Date.now()}`
-    
-    // Fill in project form
+
+    // Click the "New Workspace" button to open dialog
+    cy.contains('button', 'New Workspace').click()
+
+    // Wait for dialog to appear
+    cy.contains('Create New Workspace').should('be.visible')
+
+    // Fill in workspace form (vanilla k8s uses #name field)
     cy.get('#name').clear().type(projectName)
-    
-    // Submit the form
-    cy.contains('button', 'Create Project').click()
-    
+
+    // Wait for validation to pass and button to be enabled
+    cy.contains('button', 'Create Workspace').should('not.be.disabled')
+
+    // Submit the form (button text changed to "Create Workspace")
+    cy.contains('button', 'Create Workspace').click()
+
     // Verify redirect to project page
     cy.url({ timeout: 15000 }).should('include', `/projects/${projectName}`)
     cy.contains(projectName).should('be.visible')
   })
 
-  it('should list the created projects', () => {
+  it('should list the created workspaces', () => {
     cy.visit('/projects')
-    
+
     // Wait for projects list to load
     cy.get('body', { timeout: 10000 }).should('be.visible')
-    
-    // Verify we can see projects (at least the one we created)
-    cy.contains('Projects').should('be.visible')
+
+    // Verify we can see workspaces (terminology changed from "Projects")
+    cy.contains('Workspaces').should('be.visible')
   })
 
   it('should access backend API cluster-info endpoint', () => {

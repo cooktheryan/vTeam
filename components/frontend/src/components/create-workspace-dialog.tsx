@@ -200,23 +200,27 @@ export function CreateWorkspaceDialog({
               </div>
             )}
 
-            {/* <div className="space-y-2">
-              <Label htmlFor="name">Workspace Name *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="my-research-workspace"
-                className={nameError ? "border-red-500" : ""}
-              />
-              {nameError && <p className="text-sm text-red-600">{nameError}</p>}
-              <p className="text-sm text-gray-600">
-                {isOpenShift 
-                  ? "Must be lowercase, alphanumeric with hyphens."
-                  : "Lowercase alphanumeric with hyphens."
-                }
-              </p>
-            </div> */}
+            {/* Vanilla Kubernetes name field */}
+            {!isOpenShift && (
+              <div className="space-y-2">
+                <Label htmlFor="name">Workspace Name *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setFormData((prev) => ({ ...prev, name }));
+                    setNameError(validateProjectName(name));
+                  }}
+                  placeholder="my-research-workspace"
+                  className={nameError ? "border-red-500" : ""}
+                />
+                {nameError && <p className="text-sm text-red-600">{nameError}</p>}
+                <p className="text-sm text-gray-600">
+                  Lowercase alphanumeric with hyphens.
+                </p>
+              </div>
+            )}
 
             {/* OpenShift-only description field */}
             {isOpenShift && (

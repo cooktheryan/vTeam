@@ -27,6 +27,27 @@ patches:
     kind: Deployment
     name: frontend
 
+# JSON patches to set imagePullPolicy for all deployments
+patchesJson6902:
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: backend-api
+  path: image-pull-policy-patch.yaml
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: frontend
+  path: image-pull-policy-patch.yaml
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: agentic-operator
+  path: image-pull-policy-patch.yaml
+
 # E2E images (same as production, but can be overridden for local testing)
 images:
 - name: quay.io/ambient_code/vteam_backend

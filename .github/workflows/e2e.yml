@@ -8,11 +8,37 @@ on:
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+      operator: ${{ steps.filter.outputs.operator }}
+      claude-runner: ${{ steps.filter.outputs.claude-runner }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Check for component changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'components/frontend/**'
+            backend:
+              - 'components/backend/**'
+            operator:
+              - 'components/operator/**'
+            claude-runner:
+              - 'components/runners/**'
+
   e2e:
     name: End-to-End Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # Typical runtime: 6-7 minutes
-    
+    needs: detect-changes
+    timeout-minutes: 20  # Increased to account for builds
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v5
@@ -27,7 +53,70 @@ jobs:
     - name: Install Cypress dependencies
       working-directory: e2e
       run: npm ci
-      
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        driver-opts: network=host
+
+    - name: Build component images from PR code
+      run: |
+        echo "======================================"
+        echo "Building images from PR code..."
+        echo "======================================"
+
+        # Build frontend image (if changed or use latest)
+        if [ "${{ needs.detect-changes.outputs.frontend }}" == "true" ]; then
+          echo "Building frontend (changed)..."
+          docker build -t quay.io/ambient_code/vteam_frontend:e2e-test \
+            -f components/frontend/Dockerfile \
+            components/frontend
+        else
+          echo "Frontend unchanged, pulling latest..."
+          docker pull quay.io/ambient_code/vteam_frontend:latest
+          docker tag quay.io/ambient_code/vteam_frontend:latest quay.io/ambient_code/vteam_frontend:e2e-test
+        fi
+
+        # Build backend image (if changed or use latest)
+        if [ "${{ needs.detect-changes.outputs.backend }}" == "true" ]; then
+          echo "Building backend (changed)..."
+          docker build -t quay.io/ambient_code/vteam_backend:e2e-test \
+            -f components/backend/Dockerfile \
+            components/backend
+        else
+          echo "Backend unchanged, pulling latest..."
+          docker pull quay.io/ambient_code/vteam_backend:latest
+          docker tag quay.io/ambient_code/vteam_backend:latest quay.io/ambient_code/vteam_backend:e2e-test
+        fi
+
+        # Build operator image (if changed or use latest)
+        if [ "${{ needs.detect-changes.outputs.operator }}" == "true" ]; then
+          echo "Building operator (changed)..."
+          docker build -t quay.io/ambient_code/vteam_operator:e2e-test \
+            -f components/operator/Dockerfile \
+            components/operator
+        else
+          echo "Operator unchanged, pulling latest..."
+          docker pull quay.io/ambient_code/vteam_operator:latest
+          docker tag quay.io/ambient_code/vteam_operator:latest quay.io/ambient_code/vteam_operator:e2e-test
+        fi
+
+        # Build claude-code-runner image (if changed or use latest)
+        if [ "${{ needs.detect-changes.outputs.claude-runner }}" == "true" ]; then
+          echo "Building claude-code-runner (changed)..."
+          docker build -t quay.io/ambient_code/vteam_claude_runner:e2e-test \
+            -f components/runners/claude-code-runner/Dockerfile \
+            components/runners
+        else
+          echo "Claude-runner unchanged, pulling latest..."
+          docker pull quay.io/ambient_code/vteam_claude_runner:latest
+          docker tag quay.io/ambient_code/vteam_claude_runner:latest quay.io/ambient_code/vteam_claude_runner:e2e-test
+        fi
+
+        echo ""
+        echo "✅ All images ready"
+        docker images | grep e2e-test
+
     - name: Install kind
       run: |
         # Install kind
@@ -35,13 +124,33 @@ jobs:
         chmod +x ./kind
         sudo mv ./kind /usr/local/bin/kind
         kind version
-        
-    - name: Setup kind cluster and deploy vTeam
+
+    - name: Setup kind cluster
       working-directory: e2e
       run: |
         chmod +x scripts/*.sh
         ./scripts/setup-kind.sh
-        ./scripts/deploy.sh
+
+    - name: Load images into kind cluster
+      run: |
+        echo "======================================"
+        echo "Loading images into kind cluster..."
+        echo "======================================"
+        kind load docker-image quay.io/ambient_code/vteam_frontend:e2e-test --name vteam-e2e
+        kind load docker-image quay.io/ambient_code/vteam_backend:e2e-test --name vteam-e2e
+        kind load docker-image quay.io/ambient_code/vteam_operator:e2e-test --name vteam-e2e
+        kind load docker-image quay.io/ambient_code/vteam_claude_runner:e2e-test --name vteam-e2e
+        echo "✅ All images loaded into kind cluster"
+
+    - name: Update kustomization to use e2e-test images
+      run: |
+        # Update image tags to use locally built images
+        sed -i 's/newTag: latest/newTag: e2e-test/g' components/manifests/overlays/e2e/kustomization.yaml
+        echo "Updated kustomization.yaml to use e2e-test tag"
+
+    - name: Deploy vTeam
+      working-directory: e2e
+      run: ./scripts/deploy.sh
         
     - name: Verify deployment
       run: |
