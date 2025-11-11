@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Brain, Loader2, Settings } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Brain, Loader2, Settings, Sparkles } from "lucide-react";
 import { StreamMessage } from "@/components/ui/stream-message";
 import {
   DropdownMenu,
@@ -22,14 +23,20 @@ export type MessagesTabProps = {
   onEndSession: () => Promise<void>;
   onGoToResults?: () => void;
   onContinue: () => void;
+  selectedAgents?: string[];
+  autoSelectAgents?: boolean;
+  agentNames?: string[];
 };
 
 
-const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults, onContinue}) => {
+const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults, onContinue, selectedAgents = [], autoSelectAgents = false, agentNames = [] }) => {
   const [sendingChat, setSendingChat] = useState(false);
   const [interrupting, setInterrupting] = useState(false);
   const [ending, setEnding] = useState(false);
   const [showSystemMessages, setShowSystemMessages] = useState(false);
+  
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
 
   const phase = session?.status?.phase || "";
   const isInteractive = session?.spec?.interactive;
@@ -53,6 +60,42 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
     
     return true;
   });
+
+  // Check if user is scrolled to the bottom
+  const checkIfAtBottom = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return true;
+    
+    // For normal scroll (not reversed), we check if scrollTop + clientHeight >= scrollHeight
+    const threshold = 50; // pixels from bottom to still consider "at bottom"
+    const isBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    return isBottom;
+  };
+
+  // Handle scroll event to track if user is at bottom
+  const handleScroll = () => {
+    setIsAtBottom(checkIfAtBottom());
+  };
+
+  // Scroll to bottom function - only scrolls the messages container, not the whole page
+  const scrollToBottom = () => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+  };
+
+  // Auto-scroll to bottom when new messages arrive, but only if user was already at bottom
+  useEffect(() => {
+    if (isAtBottom) {
+      scrollToBottom();
+    }
+  }, [filteredMessages, isAtBottom]);
+
+  // Initial scroll to bottom on mount
+  useEffect(() => {
+    scrollToBottom();
+  }, []);
 
   const handleSendChat = async () => {
     setSendingChat(true);
@@ -83,7 +126,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
+      <div 
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1"
+      >
         {filteredMessages.map((m, idx) => (
           <StreamMessage key={`sm-${idx}`} message={m} isNewest={idx === filteredMessages.length - 1} onGoToResults={onGoToResults} />
         ))}
@@ -135,6 +182,27 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
         <div className="sticky bottom-0 border-t bg-white">
           <div className="p-3">
             <div className="border rounded-md p-3 space-y-2 bg-white">
+              {/* Agent prepend chips - show when agents selected */}
+              {(selectedAgents.length > 0 || autoSelectAgents) && (
+                <div className="bg-blue-50 border border-blue-200 rounded-md px-3 py-1.5 flex items-center gap-2">
+                  <span className="text-xs text-blue-800 font-medium">Agents:</span>
+                  <div className="flex flex-wrap gap-1 items-center">
+                    {autoSelectAgents ? (
+                      <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 flex items-center gap-1">
+                        <Sparkles className="h-3 w-3" />
+                        Claude will pick best agents
+                      </Badge>
+                    ) : (
+                      agentNames.map((name, idx) => (
+                        <Badge key={idx} variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                          {name.split(' - ')[0]}
+                        </Badge>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
               <textarea
                 className="w-full border rounded p-2 text-sm"
                 placeholder="Type a message to the agent... (Press Enter to send, Shift+Enter for new line)"

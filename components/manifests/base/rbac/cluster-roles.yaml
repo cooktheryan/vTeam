@@ -10,11 +10,6 @@ rules:
     resources: ["projectsettings"]
     verbs: ["get", "list", "watch"]
 
-  # RFEWorkflow read access
-  - apiGroups: ["vteam.ambient-code"]
-    resources: ["rfeworkflows"]
-    verbs: ["get", "list", "watch"]
-
   # AgenticSession read access
   - apiGroups: ["vteam.ambient-code"]
     resources: ["agenticsessions"]
@@ -31,10 +26,6 @@ rules:
   - apiGroups: ["vteam.ambient-code"]
     resources: ["projectsettings"]
     verbs: ["get", "list", "watch"]
-
-  - apiGroups: ["vteam.ambient-code"]
-    resources: ["rfeworkflows"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
 
   - apiGroups: ["vteam.ambient-code"]
     resources: ["agenticsessions"]
@@ -55,7 +46,7 @@ metadata:
 rules:
   # Full access to project resources
   - apiGroups: ["vteam.ambient-code"]
-    resources: ["projectsettings", "rfeworkflows", "agenticsessions"]
+    resources: ["projectsettings", "agenticsessions"]
     verbs: ["*"]
 
   # Full secret management

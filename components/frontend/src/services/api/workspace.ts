@@ -124,3 +124,91 @@ export async function abandonSessionChanges(
   );
 }
 
+/**
+ * Git merge status types
+ */
+export type GitMergeStatus = {
+  canMergeClean: boolean;
+  localChanges: number;
+  remoteCommitsAhead: number;
+  conflictingFiles: string[];
+  remoteBranchExists: boolean;
+};
+
+/**
+ * Get git merge status for artifacts directory
+ */
+export async function getGitMergeStatus(
+  projectName: string,
+  sessionName: string,
+  path: string = 'artifacts',
+  branch: string = 'main'
+): Promise<GitMergeStatus> {
+  const response = await apiClient.get<GitMergeStatus>(
+    `/projects/${projectName}/agentic-sessions/${sessionName}/git/merge-status`,
+    { params: { path, branch } }
+  );
+  return response;
+}
+
+/**
+ * Pull changes from remote
+ */
+export async function gitPull(
+  projectName: string,
+  sessionName: string,
+  path: string = 'artifacts',
+  branch: string = 'main'
+): Promise<void> {
+  await apiClient.post<void, { path: string; branch: string }>(
+    `/projects/${projectName}/agentic-sessions/${sessionName}/git/pull`,
+    { path, branch }
+  );
+}
+
+/**
+ * Push changes to remote
+ */
+export async function gitPush(
+  projectName: string,
+  sessionName: string,
+  path: string = 'artifacts',
+  branch: string = 'main',
+  message?: string
+): Promise<void> {
+  await apiClient.post<void, { path: string; branch: string; message?: string }>(
+    `/projects/${projectName}/agentic-sessions/${sessionName}/git/push`,
+    { path, branch, message }
+  );
+}
+
+/**
+ * Create a new git branch
+ */
+export async function gitCreateBranch(
+  projectName: string,
+  sessionName: string,
+  branchName: string,
+  path: string = 'artifacts'
+): Promise<void> {
+  await apiClient.post<void, { path: string; branchName: string }>(
+    `/projects/${projectName}/agentic-sessions/${sessionName}/git/create-branch`,
+    { path, branchName }
+  );
+}
+
+/**
+ * List remote branches
+ */
+export async function gitListBranches(
+  projectName: string,
+  sessionName: string,
+  path: string = 'artifacts'
+): Promise<string[]> {
+  const response = await apiClient.get<{ branches: string[] }>(
+    `/projects/${projectName}/agentic-sessions/${sessionName}/git/list-branches`,
+    { params: { path } }
+  );
+  return response.branches;
+}
+

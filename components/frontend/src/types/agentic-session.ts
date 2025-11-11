@@ -37,6 +37,12 @@ export type AgenticSessionSpec = {
 	// Multi-repo support
 	repos?: SessionRepo[];
 	mainRepoIndex?: number;
+	// Active workflow for dynamic workflow switching
+	activeWorkflow?: {
+		gitUrl: string;
+		branch: string;
+		path?: string;
+	};
 };
 
 // -----------------------------

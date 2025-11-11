@@ -6,9 +6,11 @@ import { UserBubble } from "@/components/user-bubble";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Plug, LogOut } from "lucide-react";
 
+type NavigationProps = {
+  feedbackUrl?: string;
+};
 
-
-export function Navigation() {
+export function Navigation({ feedbackUrl }: NavigationProps) {
   // const pathname = usePathname();
   // const segments = pathname?.split("/").filter(Boolean) || [];
   const router = useRouter();
@@ -29,6 +31,16 @@ export function Navigation() {
             </Link>
           </div>
           <div className="flex items-center gap-3">
+            {feedbackUrl && (
+              <a 
+                href={feedbackUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Share feedback
+              </a>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger className="outline-none">
                 <UserBubble />

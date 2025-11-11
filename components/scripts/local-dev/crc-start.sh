@@ -263,8 +263,7 @@ ensure_project() {
 apply_crds() {
   log "Applying CRDs..."
   oc apply -f "${CRDS_DIR}/agenticsessions-crd.yaml"
-  oc apply -f "${CRDS_DIR}/projectsettings-crd.yaml"  
-  oc apply -f "${CRDS_DIR}/rfeworkflows-crd.yaml"
+  oc apply -f "${CRDS_DIR}/projectsettings-crd.yaml"
 }
 
 apply_rbac() {
